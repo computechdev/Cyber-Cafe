@@ -72,6 +72,15 @@ class ContasReceberController extends Controller
             'entrada' => 0,
             'saida' => 0,
             'saldo' => 0,
+
+            'valor_admin' => 0,
+            'valor_cliente' => 0,
+            'valor_ponto' => 0,
+            'valor_distribuido' => 0,
+            'valor_sobra' => 0,
+
+            'creditos' => 0,
+            'porcentagem_invalida' => false,
         ];
 
         if (!empty($clienteId)) {
@@ -81,13 +90,6 @@ class ContasReceberController extends Controller
                 ->first();
 
             if ($cliente) {
-                /*
-                |--------------------------------------------------------------------------
-                | Cobranças abertas já criadas pelo fluxo de leitura
-                |--------------------------------------------------------------------------
-                | No legado, a cobrança já existe antes do fechamento.
-                | Aqui apenas listamos as cobranças ainda não fechadas.
-                */
                 $cobrancasAbertas = DB::table('cobranca_agregado')
                     ->where('id_cliente', $cliente->id)
                     ->where('ativo', 1)
@@ -100,26 +102,43 @@ class ContasReceberController extends Controller
                 |--------------------------------------------------------------------------
                 | Leituras abertas do cliente
                 |--------------------------------------------------------------------------
-                | Não filtramos id_cobranca null/0.
-                | No legado, metricas.id_cobranca já vem preenchido.
+                | tablet.id_apoio = cliente nível 3
+                | cliente.id_apoio = admin nível 1
                 */
                 $metricas = DB::table('metricas')
                     ->join('tablet', 'tablet.idprod', '=', 'metricas.idprod')
+                    ->leftJoin('users as cliente_user', 'cliente_user.id', '=', 'tablet.id_apoio')
+                    ->leftJoin('users as admin_user', 'admin_user.id', '=', 'cliente_user.id_apoio')
                     ->leftJoin('ponto', 'ponto.id', '=', 'tablet.id_ponto')
+                    ->leftJoin('leitura', 'leitura.idprod', '=', 'metricas.idprod')
                     ->select(
                         'metricas.id',
                         'metricas.id_cobranca',
                         'metricas.idprod',
                         'metricas.dataorder',
+
                         'metricas.entrada',
                         'metricas.saida',
                         'metricas.saldo_total',
+
                         'metricas.status',
                         'metricas.status_leitura',
+
                         'tablet.cliente',
                         'tablet.id_apoio',
                         'tablet.id_ponto',
-                        'ponto.nome as ponto_nome'
+
+                        'cliente_user.name as cliente_nome',
+                        'cliente_user.porcentagem as cliente_porcentagem',
+
+                        'admin_user.id as admin_id',
+                        'admin_user.name as admin_nome',
+                        'admin_user.porcentagem as admin_porcentagem',
+
+                        'ponto.nome as ponto_nome',
+                        'ponto.porcent_ponto as ponto_porcentagem',
+
+                        'leitura.creditos as creditos'
                     )
                     ->where('tablet.id_apoio', $cliente->id)
                     ->where('metricas.ativo', 1)
@@ -128,10 +147,61 @@ class ContasReceberController extends Controller
                     ->orderBy('metricas.dataorder')
                     ->get();
 
+                /*
+                |--------------------------------------------------------------------------
+                | Monta os valores para exibição do ADMIN
+                |--------------------------------------------------------------------------
+                | Cada um recebe exatamente pela porcentagem cadastrada.
+                */
+                $metricas = $metricas->map(function ($metrica) {
+                    $saldo = (float) $metrica->saldo_total;
+
+                    $porcentagemAdmin = (float) ($metrica->admin_porcentagem ?? 0);
+                    $porcentagemCliente = (float) ($metrica->cliente_porcentagem ?? 0);
+                    $porcentagemPonto = (float) ($metrica->ponto_porcentagem ?? 0);
+
+                    $porcentagemDistribuida = $porcentagemAdmin + $porcentagemCliente + $porcentagemPonto;
+                    $porcentagemSobra = 100 - $porcentagemDistribuida;
+
+                    $valorAdmin = $saldo * ($porcentagemAdmin / 100);
+                    $valorCliente = $saldo * ($porcentagemCliente / 100);
+                    $valorPonto = $saldo * ($porcentagemPonto / 100);
+
+                    $valorDistribuido = $valorAdmin + $valorCliente + $valorPonto;
+                    $valorSobra = $saldo - $valorDistribuido;
+
+                    $metrica->porcentagem_admin = $porcentagemAdmin;
+                    $metrica->porcentagem_cliente = $porcentagemCliente;
+                    $metrica->porcentagem_ponto = $porcentagemPonto;
+                    $metrica->porcentagem_distribuida = $porcentagemDistribuida;
+                    $metrica->porcentagem_sobra = $porcentagemSobra;
+
+                    $metrica->valor_admin = $valorAdmin;
+                    $metrica->valor_cliente = $valorCliente;
+                    $metrica->valor_ponto = $valorPonto;
+                    $metrica->valor_distribuido = $valorDistribuido;
+                    $metrica->valor_sobra = $valorSobra;
+
+                    $metrica->creditos_numero = $this->normalizarCreditoFechamento($metrica->creditos ?? 0);
+
+                    $metrica->porcentagem_invalida = $porcentagemDistribuida > 100;
+
+                    return $metrica;
+                });
+
                 $totais = [
                     'entrada' => (float) $metricas->sum('entrada'),
                     'saida' => (float) $metricas->sum('saida'),
                     'saldo' => (float) $metricas->sum('saldo_total'),
+
+                    'valor_admin' => (float) $metricas->sum('valor_admin'),
+                    'valor_cliente' => (float) $metricas->sum('valor_cliente'),
+                    'valor_ponto' => (float) $metricas->sum('valor_ponto'),
+                    'valor_distribuido' => (float) $metricas->sum('valor_distribuido'),
+                    'valor_sobra' => (float) $metricas->sum('valor_sobra'),
+
+                    'creditos' => (float) $metricas->sum('creditos_numero'),
+                    'porcentagem_invalida' => $metricas->contains('porcentagem_invalida', true),
                 ];
             }
         }
@@ -145,6 +215,7 @@ class ContasReceberController extends Controller
             'totais'
         ));
     }
+
     public function fecharFatura(Request $request)
     {
         $request->validate([
@@ -267,6 +338,46 @@ class ContasReceberController extends Controller
             ->values()
             ->toArray();
 
+        /*
+        |--------------------------------------------------------------------------
+        | Proteção: não fechar fatura com créditos em aberto
+        |--------------------------------------------------------------------------
+        | Regra de segurança:
+        | Se o jogo ainda possui créditos na tabela leitura, não podemos fechar
+        | a fatura, porque isso pode quebrar o acerto.
+        */
+        $idprodsMetricas = $metricas
+            ->pluck('idprod')
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+
+        $leiturasComCredito = DB::table('leitura')
+            ->whereIn('idprod', $idprodsMetricas)
+            ->select('idprod', 'creditos')
+            ->get()
+            ->filter(function ($leitura) {
+                return $this->normalizarCreditoFechamento($leitura->creditos ?? 0) > 0;
+            })
+            ->values();
+
+        if ($leiturasComCredito->isNotEmpty()) {
+            $listaCreditos = $leiturasComCredito
+                ->map(function ($leitura) {
+                    return $leitura->idprod . ' com ' . $leitura->creditos . ' crédito(s)';
+                })
+                ->implode(', ');
+
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with(
+                    'swal_warning',
+                    'Não é possível fechar esta fatura. Existem máquinas com créditos em aberto: ' . $listaCreditos
+                );
+        }
+
         $dataFechamento = now()->format('Y-m-d H:i:s');
 
         /*
@@ -356,251 +467,6 @@ class ContasReceberController extends Controller
                 ->with('swal_error', 'Erro ao fechar fatura: ' . $e->getMessage());
         }
     }
-    // public function fecharFatura(Request $request)
-    // {
-    //     $request->validate([
-    //         'cliente_id' => 'required|integer',
-    //     ], [
-    //         'cliente_id.required' => 'Selecione um cliente para fechar a fatura.',
-    //     ]);
-
-    //     $clienteId = (int) $request->input('cliente_id');
-
-    //     $cliente = DB::table('users')
-    //         ->where('id', $clienteId)
-    //         ->where('nivel', 3)
-    //         ->first();
-
-    //     if (!$cliente) {
-    //         return redirect()
-    //             ->back()
-    //             ->withInput()
-    //             ->with('swal_error', 'Cliente não encontrado.');
-    //     }
-
-    //     /*
-    //     |--------------------------------------------------------------------------
-    //     | Busca cobranças abertas existentes
-    //     |--------------------------------------------------------------------------
-    //     | Não cria cobrança nova.
-    //     | Apenas fecha a cobrança que o fluxo de leitura já criou.
-    //     */
-    //     $cobrancasAbertas = DB::table('cobranca_agregado')
-    //         ->where('id_cliente', $clienteId)
-    //         ->where('ativo', 1)
-    //         ->where('pago', 0)
-    //         ->where('cobranca_fechada', 0)
-    //         ->orderBy('id_cobranca')
-    //         ->get();
-
-    //     if ($cobrancasAbertas->isEmpty()) {
-    //         return redirect()
-    //             ->back()
-    //             ->withInput()
-    //             ->with('swal_warning', 'Não existe cobrança aberta para fechar deste cliente.');
-    //     }
-
-    //     /*
-    //     |--------------------------------------------------------------------------
-    //     | Busca métricas abertas do cliente
-    //     |--------------------------------------------------------------------------
-    //     | Não filtra id_cobranca null/0, porque no legado ela já tem id_cobranca.
-    //     */
-    //     $metricas = DB::table('metricas')
-    //         ->join('tablet', 'tablet.idprod', '=', 'metricas.idprod')
-    //         ->select(
-    //             'metricas.id',
-    //             'metricas.id_cobranca',
-    //             'metricas.idprod',
-    //             'metricas.dataorder',
-    //             'metricas.entrada',
-    //             'metricas.saida',
-    //             'metricas.saldo_total',
-    //             'metricas.status',
-    //             'metricas.status_leitura'
-    //         )
-    //         ->where('tablet.id_apoio', $clienteId)
-    //         ->where('metricas.ativo', 1)
-    //         ->where('metricas.status', 1)
-    //         ->where('metricas.status_leitura', 1)
-    //         ->orderBy('metricas.dataorder')
-    //         ->get();
-
-    //     if ($metricas->isEmpty()) {
-    //         return redirect()
-    //             ->back()
-    //             ->withInput()
-    //             ->with('swal_warning', 'Não existem leituras abertas para fechar deste cliente.');
-    //     }
-
-    //     $idsMetricas = $metricas->pluck('id')->toArray();
-    //     $idsCobrancas = $cobrancasAbertas->pluck('id_cobranca')->toArray();
-
-    //     $valorTotalMetricas = (float) $metricas->sum('saldo_total');
-    //     $hashFechamento = Str::upper(Str::random(40));
-
-    //     DB::beginTransaction();
-
-    //     try {
-    //         /*
-    //         |--------------------------------------------------------------------------
-    //         | Fecha as cobranças agregadas existentes
-    //         |--------------------------------------------------------------------------
-    //         | Mantemos o hash em cobranca_agregado.lote_fechamento_hash.
-    //         | Guardamos os IDs das métricas em lote_fechamento_id_cobrancas.
-    //         */
-    //         $dadosUpdateCobranca = [
-    //             'data_processamento' => now(),
-    //             'tipo_cobranca' => 'FECHAMENTO',
-    //             'cobranca_fechada' => 1,
-    //             'lote_fechamento_id_cobrancas' => implode(',', $idsMetricas),
-    //             'lote_fechamento_hash' => $hashFechamento,
-    //         ];
-
-    //         /*
-    //         |--------------------------------------------------------------------------
-    //         | Se existir apenas uma cobrança aberta, atualiza o valor total
-    //         |--------------------------------------------------------------------------
-    //         | Se houver mais de uma cobrança aberta, não mexemos no valor_total
-    //         | para não alterar divisão feita pelo legado.
-    //         */
-    //         if ($cobrancasAbertas->count() === 1) {
-    //             $dadosUpdateCobranca['valor_total'] = $valorTotalMetricas;
-    //         }
-
-    //         DB::table('cobranca_agregado')
-    //             ->whereIn('id_cobranca', $idsCobrancas)
-    //             ->update($dadosUpdateCobranca);
-
-    //         /*
-    //         |--------------------------------------------------------------------------
-    //         | Fecha as métricas para não aparecerem mais como abertas
-    //         |--------------------------------------------------------------------------
-    //         | status = 0 tira das leituras abertas/conta corrente.
-    //         | status_leitura fica 1 enquanto a cobrança está pendente.
-    //         | Quando pagar, muda para 2.
-    //         |
-    //         | IMPORTANTE:
-    //         | metricas.lote_fechamento recebe número, não hash.
-    //         */
-    //         DB::table('metricas')
-    //             ->whereIn('id', $idsMetricas)
-    //             ->update([
-    //                 'status' => 0,
-    //                 'data_fechamento_leitura' => now(),
-    //                 'lote_fechamento' => $idsCobrancas[0] ?? 0,
-    //                 'operador_fechamento' => auth()->id(),
-    //                 'cliente_fechamento' => $clienteId,
-    //             ]);
-
-    //         DB::commit();
-
-    //         return redirect()
-    //             ->route('contas-receber.index', ['status' => 'pendente'])
-    //             ->with('swal_success', 'Fatura fechada com sucesso.');
-    //     } catch (\Throwable $e) {
-    //         DB::rollBack();
-
-    //         return redirect()
-    //             ->back()
-    //             ->withInput()
-    //             ->with('swal_error', 'Erro ao fechar fatura: ' . $e->getMessage());
-    //     }
-    // }
-
-    // public function marcarPago($id)
-    // {
-    //     $cobranca = DB::table('cobranca_agregado')
-    //         ->where('id_cobranca', $id)
-    //         ->where('ativo', 1)
-    //         ->first();
-
-    //     if (!$cobranca) {
-    //         return redirect()
-    //             ->back()
-    //             ->with('swal_error', 'Cobrança não encontrada.');
-    //     }
-
-    //     if ((int) $cobranca->cobranca_fechada !== 1) {
-    //         return redirect()
-    //             ->back()
-    //             ->with('swal_warning', 'Essa cobrança ainda não foi fechada.');
-    //     }
-
-    //     if ((int) $cobranca->pago === 1) {
-    //         return redirect()
-    //             ->back()
-    //             ->with('swal_warning', 'Esta cobrança já está paga.');
-    //     }
-
-    //     /*
-    //     |--------------------------------------------------------------------------
-    //     | IDs das métricas vinculadas ao fechamento
-    //     |--------------------------------------------------------------------------
-    //     | No fechamento, salvamos os IDs das métricas em:
-    //     | cobranca_agregado.lote_fechamento_id_cobrancas
-    //     */
-    //     $idsMetricas = [];
-
-    //     if (!empty($cobranca->lote_fechamento_id_cobrancas)) {
-    //         $idsMetricas = collect(explode(',', $cobranca->lote_fechamento_id_cobrancas))
-    //             ->map(function ($idMetrica) {
-    //                 return (int) trim($idMetrica);
-    //             })
-    //             ->filter(function ($idMetrica) {
-    //                 return $idMetrica > 0;
-    //             })
-    //             ->values()
-    //             ->toArray();
-    //     }
-
-    //     if (empty($idsMetricas)) {
-    //         return redirect()
-    //             ->back()
-    //             ->with('swal_error', 'Não foi possível localizar as métricas dessa cobrança.');
-    //     }
-
-    //     DB::beginTransaction();
-
-    //     try {
-    //         /*
-    //         |--------------------------------------------------------------------------
-    //         | Marca cobrança como paga
-    //         |--------------------------------------------------------------------------
-    //         */
-    //         DB::table('cobranca_agregado')
-    //             ->where('id_cobranca', $cobranca->id_cobranca)
-    //             ->update([
-    //                 'pago' => 1,
-    //                 'data_pagamento' => now()->toDateString(),
-    //             ]);
-
-    //         /*
-    //         |--------------------------------------------------------------------------
-    //         | Baixa das métricas
-    //         |--------------------------------------------------------------------------
-    //         | status_leitura = 2 significa pago/baixado.
-    //         */
-    //         DB::table('metricas')
-    //             ->whereIn('id', $idsMetricas)
-    //             ->update([
-    //                 'status_leitura' => 2,
-    //                 'status' => 0,
-    //             ]);
-
-    //         DB::commit();
-
-    //         return redirect()
-    //             ->back()
-    //             ->with('swal_success', 'Cobrança marcada como paga com sucesso.');
-    //     } catch (\Throwable $e) {
-    //         DB::rollBack();
-
-    //         return redirect()
-    //             ->back()
-    //             ->with('swal_error', 'Erro ao baixar cobrança: ' . $e->getMessage());
-    //     }
-    // }
 
     public function marcarPago($id)
     {
@@ -769,5 +635,43 @@ class ContasReceberController extends Controller
                 ->back()
                 ->with('swal_error', 'Erro ao baixar cobrança: ' . $e->getMessage());
         }
+    }
+
+    private function normalizarCreditoFechamento($valor)
+    {
+        if ($valor === null || $valor === '') {
+            return 0;
+        }
+
+        $valor = trim((string) $valor);
+
+        $valor = str_replace('R$', '', $valor);
+        $valor = str_replace(' ', '', $valor);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Trata formatos possíveis:
+        |--------------------------------------------------------------------------
+        | 10
+        | 10.50
+        | 10,50
+        | 1.000,50
+        | 1,000.50
+        */
+        if (strpos($valor, ',') !== false && strpos($valor, '.') !== false) {
+            $ultimaVirgula = strrpos($valor, ',');
+            $ultimoPonto = strrpos($valor, '.');
+
+            if ($ultimaVirgula > $ultimoPonto) {
+                $valor = str_replace('.', '', $valor);
+                $valor = str_replace(',', '.', $valor);
+            } else {
+                $valor = str_replace(',', '', $valor);
+            }
+        } elseif (strpos($valor, ',') !== false) {
+            $valor = str_replace(',', '.', $valor);
+        }
+
+        return (float) $valor;
     }
 }
