@@ -10,12 +10,15 @@ class LeituraController extends Controller
     public function consultar(Request $request)
     {
         $usuario = auth()->user();
-        $nivel = (int) $usuario->nivel;
+        $nivel = (int) ($usuario->nivel ?? 0);
 
         $clientes = collect();
         $pontos = collect();
 
         $leituras = collect();
+
+        $totalEntrada = 0;
+        $totalSaida = 0;
         $saldoTotal = 0;
 
         $clienteSelecionado = $request->get('cliente');
@@ -23,7 +26,7 @@ class LeituraController extends Controller
         $statusLeitura = $request->get('status_leitura');
 
         $pesquisou = $request->has('pesquisar');
-        //dd($pesquisou);
+
         /*
         |--------------------------------------------------------------------------
         | ADMIN
@@ -33,7 +36,7 @@ class LeituraController extends Controller
         if (in_array($nivel, [1, 2])) {
             $clientes = DB::table('users')
                 ->where('nivel', 3)
-                ->where('status', true)
+                ->where('status', 1)
                 ->orderBy('name')
                 ->get();
         }
@@ -47,7 +50,7 @@ class LeituraController extends Controller
         if ($nivel === 3) {
             $pontos = DB::table('ponto')
                 ->where('id_apoio', $usuario->id)
-                ->where('status', true)
+                ->where('status', 1)
                 ->orderBy('nome')
                 ->get();
         }
@@ -60,21 +63,40 @@ class LeituraController extends Controller
                     'metricas.id',
                     'metricas.idprod',
                     'metricas.dataorder',
+
+                    'metricas.entrada',
+                    'metricas.saida',
+                    'metricas.entrada_anterior',
+                    'metricas.saida_anterior',
                     'metricas.saldo_total',
+
+                    'metricas.status',
                     'metricas.status_leitura',
+
                     'tablet.cliente',
                     'tablet.id_apoio',
                     'tablet.id_ponto',
+
                     'ponto.nome as ponto_nome'
                 )
-                ->where('metricas.ativo', true);
+                ->where('metricas.ativo', 1);
 
+            /*
+            |--------------------------------------------------------------------------
+            | FILTRO ADMIN
+            |--------------------------------------------------------------------------
+            */
             if (in_array($nivel, [1, 2])) {
                 if (!empty($clienteSelecionado)) {
                     $query->where('tablet.id_apoio', $clienteSelecionado);
                 }
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | FILTRO CLIENTE
+            |--------------------------------------------------------------------------
+            */
             if ($nivel === 3) {
                 $query->where('tablet.id_apoio', $usuario->id);
 
@@ -83,15 +105,39 @@ class LeituraController extends Controller
                 }
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | STATUS DA LEITURA
+            |--------------------------------------------------------------------------
+            | 1 = Aberta
+            | 2 = Fechada
+            */
             if ($statusLeitura !== null && $statusLeitura !== '') {
                 $query->where('metricas.status_leitura', $statusLeitura);
             }
 
             $leituras = $query
                 ->orderBy('metricas.dataorder')
-                ->get();
+                ->get()
+                ->map(function ($leitura) {
+                    $entradaAtual = (float) ($leitura->entrada ?? 0);
+                    $saidaAtual = (float) ($leitura->saida ?? 0);
 
-            $saldoTotal = $leituras->sum('saldo_total');
+                    $entradaAnterior = (float) ($leitura->entrada_anterior ?? 0);
+                    $saidaAnterior = (float) ($leitura->saida_anterior ?? 0);
+
+                    $leitura->entrada_acerto = $entradaAtual - $entradaAnterior;
+                    $leitura->saida_acerto = $saidaAtual - $saidaAnterior;
+                    $leitura->saldo_acerto = (float) ($leitura->saldo_total ?? 0);
+
+                    $leitura->status_leitura_nome = $this->nomeStatusLeitura($leitura->status_leitura);
+
+                    return $leitura;
+                });
+
+            $totalEntrada = $leituras->sum('entrada_acerto');
+            $totalSaida = $leituras->sum('saida_acerto');
+            $saldoTotal = $leituras->sum('saldo_acerto');
         }
 
         return view('leituras.consultar', compact(
@@ -99,6 +145,8 @@ class LeituraController extends Controller
             'clientes',
             'pontos',
             'leituras',
+            'totalEntrada',
+            'totalSaida',
             'saldoTotal',
             'pesquisou',
             'clienteSelecionado',
@@ -110,12 +158,15 @@ class LeituraController extends Controller
     public function periodo(Request $request)
     {
         $usuario = auth()->user();
-        $nivel = (int) $usuario->nivel;
+        $nivel = (int) ($usuario->nivel ?? 0);
 
         $clientes = collect();
         $pontos = collect();
 
         $leituras = collect();
+
+        $totalEntrada = 0;
+        $totalSaida = 0;
         $saldoTotal = 0;
 
         $clienteSelecionado = $request->get('cliente');
@@ -135,7 +186,7 @@ class LeituraController extends Controller
         if (in_array($nivel, [1, 2])) {
             $clientes = DB::table('users')
                 ->where('nivel', 3)
-                ->where('status', true)
+                ->where('status', 1)
                 ->orderBy('name')
                 ->get();
         }
@@ -149,36 +200,35 @@ class LeituraController extends Controller
         if ($nivel === 3) {
             $pontos = DB::table('ponto')
                 ->where('id_apoio', $usuario->id)
-                ->where('status', true)
+                ->where('status', 1)
                 ->orderBy('nome')
                 ->get();
         }
 
         /*
         |--------------------------------------------------------------------------
-        | VALIDAÇÕES COM SWEETALERT2
+        | VALIDAÇÕES
         |--------------------------------------------------------------------------
         */
-
         if ($pesquisou && empty($dataInicial)) {
             return redirect()
-    ->back()
-    ->withInput()
-    ->with('swal_error', 'Selecione a data inicial para pesquisar.');
+                ->back()
+                ->withInput()
+                ->with('swal_error', 'Selecione a data inicial para pesquisar.');
         }
 
         if ($pesquisou && empty($dataFinal)) {
-           return redirect()
-    ->back()
-    ->withInput()
-    ->with('swal_error', 'Selecione a data inicial para pesquisar.');
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('swal_error', 'Selecione a data final para pesquisar.');
         }
 
         if ($pesquisou && in_array($nivel, [1, 2]) && empty($clienteSelecionado)) {
-           return redirect()
-    ->back()
-    ->withInput()
-    ->with('swal_error', 'Selecione a data inicial para pesquisar.');
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('swal_error', 'Selecione o cliente para pesquisar.');
         }
 
         if ($pesquisou) {
@@ -189,14 +239,23 @@ class LeituraController extends Controller
                     'metricas.id',
                     'metricas.idprod',
                     'metricas.dataorder',
+
+                    'metricas.entrada',
+                    'metricas.saida',
+                    'metricas.entrada_anterior',
+                    'metricas.saida_anterior',
                     'metricas.saldo_total',
+
+                    'metricas.status',
                     'metricas.status_leitura',
+
                     'tablet.cliente',
                     'tablet.id_apoio',
                     'tablet.id_ponto',
+
                     'ponto.nome as ponto_nome'
                 )
-                ->where('metricas.ativo', true);
+                ->where('metricas.ativo', 1);
 
             /*
             |--------------------------------------------------------------------------
@@ -225,16 +284,33 @@ class LeituraController extends Controller
 
             $leituras = $query
                 ->orderBy('metricas.dataorder')
-                ->get();
+                ->get()
+                ->map(function ($leitura) {
+                    $entradaAtual = (float) ($leitura->entrada ?? 0);
+                    $saidaAtual = (float) ($leitura->saida ?? 0);
 
-            $saldoTotal = $leituras->sum('saldo_total');
+                    $entradaAnterior = (float) ($leitura->entrada_anterior ?? 0);
+                    $saidaAnterior = (float) ($leitura->saida_anterior ?? 0);
 
-           if ($leituras->isEmpty()) {
-    return redirect()
-        ->back()
-        ->withInput()
-        ->with('swal_warning', 'Nenhuma leitura encontrada para o período informado.');
-}
+                    $leitura->entrada_acerto = $entradaAtual - $entradaAnterior;
+                    $leitura->saida_acerto = $saidaAtual - $saidaAnterior;
+                    $leitura->saldo_acerto = (float) ($leitura->saldo_total ?? 0);
+
+                    $leitura->status_leitura_nome = $this->nomeStatusLeitura($leitura->status_leitura);
+
+                    return $leitura;
+                });
+
+            $totalEntrada = $leituras->sum('entrada_acerto');
+            $totalSaida = $leituras->sum('saida_acerto');
+            $saldoTotal = $leituras->sum('saldo_acerto');
+
+            if ($leituras->isEmpty()) {
+                return redirect()
+                    ->back()
+                    ->withInput()
+                    ->with('swal_warning', 'Nenhuma leitura encontrada para o período informado.');
+            }
         }
 
         return view('leituras.periodo', compact(
@@ -242,6 +318,8 @@ class LeituraController extends Controller
             'clientes',
             'pontos',
             'leituras',
+            'totalEntrada',
+            'totalSaida',
             'saldoTotal',
             'pesquisou',
             'clienteSelecionado',
@@ -249,5 +327,18 @@ class LeituraController extends Controller
             'dataInicial',
             'dataFinal'
         ));
+    }
+
+    private function nomeStatusLeitura($statusLeitura)
+    {
+        if ((int) $statusLeitura === 1) {
+            return 'Aberta';
+        }
+
+        if ((int) $statusLeitura === 2) {
+            return 'Fechada';
+        }
+
+        return 'Indefinida';
     }
 }

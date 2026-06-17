@@ -38,7 +38,7 @@
 
                         @if ($nivel === 1 || $nivel === 2)
                             <div class="col-md-3">
-                                <div class="input-group">
+                                <div class="input-group mb-2">
                                     <div class="input-group-prepend">
                                         <span class="input-group-text">
                                             Cliente
@@ -46,7 +46,7 @@
                                     </div>
 
                                     <select name="cliente" class="form-control">
-                                        <option value="">Selecione</option>
+                                        <option value="">Todos</option>
 
                                         @foreach ($clientes as $cliente)
                                             <option
@@ -63,7 +63,7 @@
 
                         @if ($nivel === 3)
                             <div class="col-md-3">
-                                <div class="input-group">
+                                <div class="input-group mb-2">
                                     <div class="input-group-prepend">
                                         <span class="input-group-text">
                                             Ponto
@@ -71,7 +71,7 @@
                                     </div>
 
                                     <select name="ponto" class="form-control">
-                                        <option value="">Selecione</option>
+                                        <option value="">Todos</option>
 
                                         @foreach ($pontos as $ponto)
                                             <option
@@ -87,10 +87,10 @@
                         @endif
 
                         <div class="col-md-4">
-                            <div class="input-group">
+                            <div class="input-group mb-2">
                                 <div class="input-group-prepend">
                                     <span class="input-group-text">
-                                        Data Movimentação
+                                        Data
                                     </span>
                                 </div>
 
@@ -98,8 +98,7 @@
                                     type="date"
                                     name="data_inicial"
                                     class="form-control"
-                                    
-                                    placeholder="dd/mm/aaaa"
+                                    value="{{ $dataInicial }}"
                                 >
 
                                 <div class="input-group-prepend">
@@ -112,14 +111,37 @@
                                     type="date"
                                     name="data_final"
                                     class="form-control"
-                                    
-                                    placeholder="dd/mm/aaaa"
+                                    value="{{ $dataFinal }}"
                                 >
                             </div>
                         </div>
 
+                        <div class="col-md-3">
+                            <div class="input-group mb-2">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text">
+                                        Fatura
+                                    </span>
+                                </div>
+
+                                <select name="status_fatura" class="form-control">
+                                    <option value="todos" {{ ($statusFatura ?? 'todos') === 'todos' ? 'selected' : '' }}>
+                                        Todas
+                                    </option>
+
+                                    <option value="pendente" {{ ($statusFatura ?? 'todos') === 'pendente' ? 'selected' : '' }}>
+                                        Pendentes
+                                    </option>
+
+                                    <option value="fechada" {{ ($statusFatura ?? 'todos') === 'fechada' ? 'selected' : '' }}>
+                                        Fechadas
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="col-md-2">
-                            <button type="submit" class="btn btn-info" id="btn-pesquisar">
+                            <button type="submit" class="btn btn-info btn-block mb-2" id="btn-pesquisar">
                                 Pesquisar
                             </button>
                         </div>
@@ -138,6 +160,7 @@
                         <thead>
                             <tr>
                                 <th>Descrição da movimentação</th>
+                                <th>Status</th>
                                 <th class="text-right">Entrada</th>
                                 <th class="text-right">Saída</th>
                                 <th class="text-right">Saldo</th>
@@ -149,6 +172,27 @@
                                 <tr>
                                     <td>
                                         Tablet {{ $movimentacao->idprod }}
+
+                                        @if (!empty($movimentacao->ponto_nome))
+                                            <br>
+                                            <small>{{ $movimentacao->ponto_nome }}</small>
+                                        @endif
+                                    </td>
+
+                                    <td>
+                                        @if ($movimentacao->status_fatura === 'Fechada')
+                                            <span class="badge badge-secondary">
+                                                Fechada
+                                            </span>
+                                        @elseif ($movimentacao->status_fatura === 'Pendente')
+                                            <span class="badge badge-warning">
+                                                Pendente
+                                            </span>
+                                        @else
+                                            <span class="badge badge-light">
+                                                {{ $movimentacao->status_fatura }}
+                                            </span>
+                                        @endif
                                     </td>
 
                                     <td class="text-right">
@@ -166,11 +210,11 @@
                             @endforeach
 
                             <tr class="linha-separadora">
-                                <td colspan="4"></td>
+                                <td colspan="5"></td>
                             </tr>
 
                             <tr>
-                                <td>
+                                <td colspan="2">
                                     <div class="barcode-legado">
                                         <span></span><span></span><span></span><span></span><span></span>
                                         <span></span><span></span><span></span><span></span><span></span>
@@ -189,7 +233,7 @@
                             </tr>
 
                             <tr>
-                                <td></td>
+                                <td colspan="2"></td>
 
                                 <td colspan="2" class="text-right">
                                     <strong>Total Saída</strong>
@@ -201,7 +245,7 @@
                             </tr>
 
                             <tr>
-                                <td></td>
+                                <td colspan="2"></td>
 
                                 <td colspan="2" class="text-right">
                                     <strong>Saldo Total</strong>
@@ -278,6 +322,16 @@
 
         .barcode-legado span:nth-child(3n) {
             width: 3px;
+        }
+
+        @media (max-width: 767.98px) {
+            .input-group {
+                margin-bottom: 8px;
+            }
+
+            .btn-block {
+                width: 100%;
+            }
         }
     </style>
 @stop

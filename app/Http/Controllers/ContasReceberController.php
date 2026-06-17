@@ -19,12 +19,31 @@ class ContasReceberController extends Controller
             ->orderBy('name')
             ->get();
 
+        /*
+        |--------------------------------------------------------------------------
+        | Contas a receber
+        |--------------------------------------------------------------------------
+        | Mostra cobranças fechadas.
+        |
+        | Agora também buscamos:
+        | - porcentagem do cliente
+        | - porcentagem do admin ligado ao cliente
+        |
+        | cliente.id_apoio aponta para o admin.
+        */
         $query = DB::table('cobranca_agregado')
-            ->join('users', 'users.id', '=', 'cobranca_agregado.id_cliente')
+            ->join('users as cliente_user', 'cliente_user.id', '=', 'cobranca_agregado.id_cliente')
+            ->leftJoin('users as admin_user', 'admin_user.id', '=', 'cliente_user.id_apoio')
             ->select(
                 'cobranca_agregado.*',
-                'users.name as cliente_nome',
-                'users.username as cliente_username'
+
+                'cliente_user.name as cliente_nome',
+                'cliente_user.username as cliente_username',
+                'cliente_user.porcentagem as cliente_porcentagem',
+
+                'admin_user.id as admin_id',
+                'admin_user.name as admin_nome',
+                'admin_user.porcentagem as admin_porcentagem'
             )
             ->where('cobranca_agregado.ativo', 1)
             ->where('cobranca_agregado.cobranca_fechada', 1);
@@ -46,6 +65,43 @@ class ContasReceberController extends Controller
             ->paginate(20)
             ->appends($request->query());
 
+        /*
+        |--------------------------------------------------------------------------
+        | Calcula valores reais da fatura
+        |--------------------------------------------------------------------------
+        | Valor Total:
+        | saldo_total das métricas fechadas nessa fatura.
+        |
+        | Valor Admin:
+        | valor_total_acerto * admin.porcentagem / 100
+        |
+        | Valor Cliente:
+        | valor_total_acerto * cliente.porcentagem / 100
+        */
+        $contas->getCollection()->transform(function ($conta) {
+            $valorTotalAcerto = $this->buscarValorTotalAcertoContasReceber($conta);
+
+            if ($valorTotalAcerto == 0) {
+                $valorTotalAcerto = (float) ($conta->valor_total ?? 0);
+            }
+
+            $porcentagemAdmin = (float) ($conta->admin_porcentagem ?? 0);
+            $porcentagemCliente = (float) ($conta->cliente_porcentagem ?? 0);
+
+            $valorAdmin = $valorTotalAcerto * ($porcentagemAdmin / 100);
+            $valorCliente = $valorTotalAcerto * ($porcentagemCliente / 100);
+
+            $conta->valor_total_acerto = $valorTotalAcerto;
+
+            $conta->porcentagem_admin = $porcentagemAdmin;
+            $conta->porcentagem_cliente = $porcentagemCliente;
+
+            $conta->valor_admin = $valorAdmin;
+            $conta->valor_cliente = $valorCliente;
+
+            return $conta;
+        });
+
         return view('financeiro.contas-receber.index', compact(
             'contas',
             'clientes',
@@ -53,7 +109,6 @@ class ContasReceberController extends Controller
             'clienteId'
         ));
     }
-
     public function fecharIndex(Request $request)
     {
         $clienteId = $request->get('cliente_id');
@@ -119,6 +174,8 @@ class ContasReceberController extends Controller
 
                         'metricas.entrada',
                         'metricas.saida',
+                        'metricas.entrada_anterior',
+                        'metricas.saida_anterior',
                         'metricas.saldo_total',
 
                         'metricas.status',
@@ -149,12 +206,36 @@ class ContasReceberController extends Controller
 
                 /*
                 |--------------------------------------------------------------------------
-                | Monta os valores para exibição do ADMIN
+                | Monta os valores corretos do acerto
                 |--------------------------------------------------------------------------
-                | Cada um recebe exatamente pela porcentagem cadastrada.
+                | Importante:
+                | A tela não deve mostrar entrada/saída bruta como se fosse o acerto.
+                |
+                | entrada_acerto = entrada atual - entrada anterior
+                | saida_acerto   = saida atual - saida anterior
+                | saldo_acerto   = entrada_acerto - saida_acerto
                 */
                 $metricas = $metricas->map(function ($metrica) {
-                    $saldo = (float) $metrica->saldo_total;
+                    $entradaAtual = (float) ($metrica->entrada ?? 0);
+                    $saidaAtual = (float) ($metrica->saida ?? 0);
+
+                    $entradaAnterior = (float) ($metrica->entrada_anterior ?? 0);
+                    $saidaAnterior = (float) ($metrica->saida_anterior ?? 0);
+
+                    $entradaAcerto = $entradaAtual - $entradaAnterior;
+                    $saidaAcerto = $saidaAtual - $saidaAnterior;
+                    $saldoAcerto = $entradaAcerto - $saidaAcerto;
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Proteção
+                    |--------------------------------------------------------------------------
+                    | Se por algum motivo o cálculo do acerto vier diferente do saldo_total,
+                    | mantemos o saldo_total como referência oficial da métrica.
+                    |
+                    | Mas a entrada/saída exibida continuam sendo as diferenças do período.
+                    */
+                    $saldoOficial = (float) ($metrica->saldo_total ?? $saldoAcerto);
 
                     $porcentagemAdmin = (float) ($metrica->admin_porcentagem ?? 0);
                     $porcentagemCliente = (float) ($metrica->cliente_porcentagem ?? 0);
@@ -163,12 +244,21 @@ class ContasReceberController extends Controller
                     $porcentagemDistribuida = $porcentagemAdmin + $porcentagemCliente + $porcentagemPonto;
                     $porcentagemSobra = 100 - $porcentagemDistribuida;
 
-                    $valorAdmin = $saldo * ($porcentagemAdmin / 100);
-                    $valorCliente = $saldo * ($porcentagemCliente / 100);
-                    $valorPonto = $saldo * ($porcentagemPonto / 100);
+                    $valorAdmin = $saldoOficial * ($porcentagemAdmin / 100);
+                    $valorCliente = $saldoOficial * ($porcentagemCliente / 100);
+                    $valorPonto = $saldoOficial * ($porcentagemPonto / 100);
 
                     $valorDistribuido = $valorAdmin + $valorCliente + $valorPonto;
-                    $valorSobra = $saldo - $valorDistribuido;
+                    $valorSobra = $saldoOficial - $valorDistribuido;
+
+                    $metrica->entrada_atual = $entradaAtual;
+                    $metrica->saida_atual = $saidaAtual;
+                    $metrica->entrada_anterior_numero = $entradaAnterior;
+                    $metrica->saida_anterior_numero = $saidaAnterior;
+
+                    $metrica->entrada_acerto = $entradaAcerto;
+                    $metrica->saida_acerto = $saidaAcerto;
+                    $metrica->saldo_acerto = $saldoOficial;
 
                     $metrica->porcentagem_admin = $porcentagemAdmin;
                     $metrica->porcentagem_cliente = $porcentagemCliente;
@@ -190,9 +280,9 @@ class ContasReceberController extends Controller
                 });
 
                 $totais = [
-                    'entrada' => (float) $metricas->sum('entrada'),
-                    'saida' => (float) $metricas->sum('saida'),
-                    'saldo' => (float) $metricas->sum('saldo_total'),
+                    'entrada' => (float) $metricas->sum('entrada_acerto'),
+                    'saida' => (float) $metricas->sum('saida_acerto'),
+                    'saldo' => (float) $metricas->sum('saldo_acerto'),
 
                     'valor_admin' => (float) $metricas->sum('valor_admin'),
                     'valor_cliente' => (float) $metricas->sum('valor_cliente'),
@@ -470,13 +560,6 @@ class ContasReceberController extends Controller
 
     public function marcarPago($id)
     {
-        /*
-        |--------------------------------------------------------------------------
-        | Busca a cobrança agregada
-        |--------------------------------------------------------------------------
-        | Esta tela é Contas a Receber do admin.
-        | Portanto a baixa começa pela cobranca_agregado.
-        */
         $cobranca = DB::table('cobranca_agregado')
             ->where('id_cobranca', $id)
             ->where('ativo', 1)
@@ -488,22 +571,6 @@ class ContasReceberController extends Controller
                 ->with('swal_error', 'Cobrança não encontrada.');
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Só pode baixar cobrança fechada
-        |--------------------------------------------------------------------------
-        | Aberta:
-        | pago = 0
-        | cobranca_fechada = 0
-        |
-        | Fechada pendente:
-        | pago = 0
-        | cobranca_fechada = 1
-        |
-        | Paga:
-        | pago = 1
-        | cobranca_fechada = 1
-        */
         if ((int) $cobranca->cobranca_fechada !== 1) {
             return redirect()
                 ->back()
@@ -512,63 +579,77 @@ class ContasReceberController extends Controller
 
         if ((int) $cobranca->pago === 1) {
             return redirect()
-                ->back()
-                ->with('swal_warning', 'Esta cobrança já está paga.');
+                ->route('contas-receber.index')
+                ->with('swal_warning', 'Esta cobrança já está paga e baixada.');
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Busca as cobranças de locação vinculadas à agregada
+        | Busca locações vinculadas à cobrança agregada
         |--------------------------------------------------------------------------
-        | Importante:
-        | metricas.id_cobranca aponta para cobranca_locacao.id_cobranca,
-        | não para cobranca_agregado.id_cobranca.
+        | No fluxo atual:
+        | cobranca_agregado.id_cobranca
+        |      ↓
+        | cobranca_locacao.id_cobranca_agregado
+        |      ↓
+        | metricas.id_cobranca
         */
-        $cobrancasLocacao = DB::table('cobranca_locacao')
+        $locacoes = DB::table('cobranca_locacao')
             ->where('id_cobranca_agregado', $cobranca->id_cobranca)
-            ->where('ativo', 1)
-            ->orderBy('id_cobranca')
             ->get();
 
-        if ($cobrancasLocacao->isEmpty()) {
-            return redirect()
-                ->back()
-                ->with('swal_error', 'Não foi encontrada nenhuma cobrança de locação vinculada a esta fatura.');
-        }
-
-        $idsCobrancasLocacao = $cobrancasLocacao
+        $idsLocacoes = $locacoes
             ->pluck('id_cobranca')
-            ->map(function ($idCobranca) {
-                return (int) $idCobranca;
+            ->map(function ($idLocacao) {
+                return (int) $idLocacao;
             })
-            ->filter(function ($idCobranca) {
-                return $idCobranca > 0;
+            ->filter(function ($idLocacao) {
+                return $idLocacao > 0;
             })
             ->values()
             ->toArray();
 
-        if (empty($idsCobrancasLocacao)) {
-            return redirect()
-                ->back()
-                ->with('swal_error', 'Não foi possível localizar os IDs das cobranças de locação.');
+        /*
+        |--------------------------------------------------------------------------
+        | IDs das métricas salvas no fechamento
+        |--------------------------------------------------------------------------
+        | No fechamento salvamos os IDs em:
+        | cobranca_agregado.lote_fechamento_id_cobrancas
+        */
+        $idsMetricas = [];
+
+        if (!empty($cobranca->lote_fechamento_id_cobrancas)) {
+            $idsMetricas = collect(explode(',', $cobranca->lote_fechamento_id_cobrancas))
+                ->map(function ($idMetrica) {
+                    return (int) trim($idMetrica);
+                })
+                ->filter(function ($idMetrica) {
+                    return $idMetrica > 0;
+                })
+                ->values()
+                ->toArray();
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Busca as métricas vinculadas às cobranças de locação
+        | Fallback de segurança
         |--------------------------------------------------------------------------
+        | Se por algum motivo o lote não estiver preenchido,
+        | busca as métricas pelas locações vinculadas.
         */
-        $idsMetricas = DB::table('metricas')
-            ->whereIn('id_cobranca', $idsCobrancasLocacao)
-            ->pluck('id')
-            ->map(function ($idMetrica) {
-                return (int) $idMetrica;
-            })
-            ->filter(function ($idMetrica) {
-                return $idMetrica > 0;
-            })
-            ->values()
-            ->toArray();
+        if (empty($idsMetricas) && !empty($idsLocacoes)) {
+            $idsMetricas = DB::table('metricas')
+                ->whereIn('id_cobranca', $idsLocacoes)
+                ->pluck('id')
+                ->map(function ($idMetrica) {
+                    return (int) $idMetrica;
+                })
+                ->filter(function ($idMetrica) {
+                    return $idMetrica > 0;
+                })
+                ->values()
+                ->toArray();
+        }
 
         if (empty($idsMetricas)) {
             return redirect()
@@ -581,11 +662,10 @@ class ContasReceberController extends Controller
         try {
             /*
             |--------------------------------------------------------------------------
-            | Marca cobrança agregada como paga
+            | Baixa da cobrança agregada
             |--------------------------------------------------------------------------
-            | Igual ao legado:
-            | pago = 1
-            | data_pagamento = data atual
+            | Depois disso ela não aparece mais em Contas a Receber,
+            | porque o index filtra pago = 0.
             */
             DB::table('cobranca_agregado')
                 ->where('id_cobranca', $cobranca->id_cobranca)
@@ -596,38 +676,39 @@ class ContasReceberController extends Controller
 
             /*
             |--------------------------------------------------------------------------
-            | Marca cobranças de locação como pagas também
+            | Baixa das cobranças de locação vinculadas
             |--------------------------------------------------------------------------
-            | No legado a baixa principal do admin é na agregada.
-            | Aqui mantemos a locação sincronizada para evitar fatura parcialmente aberta.
             */
-            DB::table('cobranca_locacao')
-                ->whereIn('id_cobranca', $idsCobrancasLocacao)
-                ->update([
-                    'pago' => 1,
-                    'data_pagamento' => now()->toDateString(),
-                ]);
+            if (!empty($idsLocacoes)) {
+                DB::table('cobranca_locacao')
+                    ->whereIn('id_cobranca', $idsLocacoes)
+                    ->update([
+                        'pago' => 1,
+                        'data_pagamento' => now()->toDateString(),
+                    ]);
+            }
 
             /*
             |--------------------------------------------------------------------------
             | Baixa das métricas
             |--------------------------------------------------------------------------
-            | Igual ao legado:
-            | status_leitura = 2
             | status = 0
+            | status_leitura = 2
+            |
+            | Assim elas não voltam para fechamento/pesquisa de abertas.
             */
             DB::table('metricas')
                 ->whereIn('id', $idsMetricas)
                 ->update([
-                    'status_leitura' => 2,
                     'status' => 0,
+                    'status_leitura' => 2,
                 ]);
 
             DB::commit();
 
             return redirect()
-                ->back()
-                ->with('swal_success', 'Cobrança marcada como paga com sucesso.');
+                ->route('contas-receber.index')
+                ->with('swal_success', 'Fatura baixada com sucesso. Ela não aparecerá mais nas pesquisas pendentes.');
         } catch (\Throwable $e) {
             DB::rollBack();
 
@@ -674,4 +755,64 @@ class ContasReceberController extends Controller
 
         return (float) $valor;
     }
+
+    private function buscarValorTotalAcertoContasReceber($conta)
+{
+    $idsMetricas = [];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Preferência 1: IDs salvos no fechamento
+    |--------------------------------------------------------------------------
+    | No fechamento salvamos:
+    | cobranca_agregado.lote_fechamento_id_cobrancas
+    */
+    if (!empty($conta->lote_fechamento_id_cobrancas)) {
+        $idsMetricas = collect(explode(',', $conta->lote_fechamento_id_cobrancas))
+            ->map(function ($id) {
+                return (int) trim($id);
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->values()
+            ->toArray();
+    }
+
+    if (!empty($idsMetricas)) {
+        return (float) DB::table('metricas')
+            ->whereIn('id', $idsMetricas)
+            ->sum('saldo_total');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Preferência 2: locações vinculadas
+    |--------------------------------------------------------------------------
+    | cobranca_agregado.id_cobranca
+    |      ↓
+    | cobranca_locacao.id_cobranca_agregado
+    |      ↓
+    | metricas.id_cobranca
+    */
+    $idsLocacoes = DB::table('cobranca_locacao')
+        ->where('id_cobranca_agregado', $conta->id_cobranca)
+        ->pluck('id_cobranca')
+        ->map(function ($id) {
+            return (int) $id;
+        })
+        ->filter(function ($id) {
+            return $id > 0;
+        })
+        ->values()
+        ->toArray();
+
+    if (!empty($idsLocacoes)) {
+        return (float) DB::table('metricas')
+            ->whereIn('id_cobranca', $idsLocacoes)
+            ->sum('saldo_total');
+    }
+
+    return 0;
+}
 }

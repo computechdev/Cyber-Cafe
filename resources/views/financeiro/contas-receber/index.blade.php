@@ -12,6 +12,14 @@
         $formatMoney = function ($valor) {
             return 'R$ ' . number_format((float) $valor, 2, ',', '.');
         };
+
+        $formatPercent = function ($valor) {
+            return number_format((float) $valor, 2, ',', '.') . '%';
+        };
+
+        $totalPagina = (float) $contas->sum('valor_total_acerto');
+        $totalAdminPagina = (float) $contas->sum('valor_admin');
+        $totalClientePagina = (float) $contas->sum('valor_cliente');
     @endphp
 
     <div class="card">
@@ -31,7 +39,8 @@
                             @foreach ($clientes as $cliente)
                                 <option value="{{ $cliente->id }}"
                                     {{ (string) $clienteId === (string) $cliente->id ? 'selected' : '' }}>
-                                    {{ $cliente->name }} {{ $cliente->username ? '(' . $cliente->username . ')' : '' }}
+                                    {{ $cliente->name }}
+                                    {{ $cliente->username ? '(' . $cliente->username . ')' : '' }}
                                 </option>
                             @endforeach
                         </select>
@@ -41,9 +50,17 @@
                         <label>Status</label>
 
                         <select name="status" class="form-control">
-                            <option value="pendente" {{ $status === 'pendente' ? 'selected' : '' }}>Pendente</option>
-                            <option value="pago" {{ $status === 'pago' ? 'selected' : '' }}>Pago</option>
-                            <option value="todos" {{ $status === 'todos' ? 'selected' : '' }}>Todos</option>
+                            <option value="pendente" {{ $status === 'pendente' ? 'selected' : '' }}>
+                                Pendente
+                            </option>
+
+                            <option value="pago" {{ $status === 'pago' ? 'selected' : '' }}>
+                                Pago
+                            </option>
+
+                            <option value="todos" {{ $status === 'todos' ? 'selected' : '' }}>
+                                Todos
+                            </option>
                         </select>
                     </div>
 
@@ -54,8 +71,8 @@
                         </button>
 
                         <a href="{{ route('contas-receber.fechar.index') }}" class="btn btn-success ml-2">
-                            <i class="fas fa-lock"></i>
-                            Fechar Fatura Aberta
+                            <i class="fas fa-plus"></i>
+                            Fechar Nova Fatura
                         </a>
                     </div>
                 </div>
@@ -64,12 +81,16 @@
     </div>
 
     <div class="card">
-        <div class="card-header bg-dark d-flex justify-content-between align-items-center">
-            <strong>Faturas</strong>
-
-            <span class="badge badge-light">
-                {{ $contas->total() }} encontrada(s)
-            </span>
+        <div class="card-header bg-dark">
+            <strong>
+                @if ($status === 'pago')
+                    Faturas Pagas
+                @elseif ($status === 'todos')
+                    Todas as Faturas
+                @else
+                    Faturas Pendentes
+                @endif
+            </strong>
         </div>
 
         <div class="card-body p-0">
@@ -81,10 +102,14 @@
                             <th>Cliente</th>
                             <th>Processamento</th>
                             <th>Vencimento</th>
-                            <th class="text-right">Valor</th>
+
+                            <th class="text-right">Valor Total</th>
+                            <th class="text-right">Admin</th>
+                            <th class="text-right">Cliente</th>
+
                             <th>Status</th>
                             <th>Pagamento</th>
-                            <th width="180">Ações</th>
+                            <th width="190">Ações</th>
                         </tr>
                     </thead>
 
@@ -95,6 +120,7 @@
 
                                 <td>
                                     {{ $conta->cliente_nome }}
+
                                     @if ($conta->cliente_username)
                                         <br>
                                         <small>{{ $conta->cliente_username }}</small>
@@ -110,7 +136,23 @@
                                 </td>
 
                                 <td class="text-right">
-                                    {{ $formatMoney($conta->valor_total) }}
+                                    {{ $formatMoney($conta->valor_total_acerto ?? $conta->valor_total) }}
+                                </td>
+
+                                <td class="text-right">
+                                    {{ $formatMoney($conta->valor_admin ?? 0) }}
+                                    <br>
+                                    <small>
+                                        {{ $formatPercent($conta->porcentagem_admin ?? 0) }}
+                                    </small>
+                                </td>
+
+                                <td class="text-right">
+                                    {{ $formatMoney($conta->valor_cliente ?? 0) }}
+                                    <br>
+                                    <small>
+                                        {{ $formatPercent($conta->porcentagem_cliente ?? 0) }}
+                                    </small>
                                 </td>
 
                                 <td>
@@ -127,21 +169,25 @@
 
                                 <td>
                                     @if ((int) $conta->pago === 0)
-                                        <form method="POST"
+                                        <form
+                                            method="POST"
                                             action="{{ route('contas-receber.marcar-pago', $conta->id_cobranca) }}"
-                                            class="d-inline form-confirmar-acao" data-titulo="Marcar como pago?"
-                                            data-texto="Confirmar baixa da fatura nº {{ $conta->id_cobranca }}?"
-                                            data-confirmar="Sim, marcar pago" data-icon="warning">
+                                            class="d-inline form-confirmar-acao"
+                                            data-titulo="Marcar como pago?"
+                                            data-texto="Confirmar baixa da fatura nº {{ $conta->id_cobranca }}? Valor total: {{ $formatMoney($conta->valor_total_acerto ?? $conta->valor_total) }}. Admin: {{ $formatMoney($conta->valor_admin ?? 0) }}. Cliente: {{ $formatMoney($conta->valor_cliente ?? 0) }}."
+                                            data-confirmar="Sim, marcar pago"
+                                            data-icon="warning"
+                                        >
                                             @csrf
 
                                             <button type="submit" class="btn btn-sm btn-success">
-                                                <i class="fas fa-money-bill-wave"></i>
-                                                Baixar Pagamento
+                                                <i class="fas fa-check"></i>
+                                                Marcar Pago / Baixar
                                             </button>
                                         </form>
                                     @else
                                         <button class="btn btn-sm btn-secondary" disabled>
-                                            <i class="fas fa-check-circle"></i>
+                                            <i class="fas fa-check"></i>
                                             Pago
                                         </button>
                                     @endif
@@ -149,12 +195,36 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="text-center p-4">
+                                <td colspan="10" class="text-center p-4">
                                     Nenhuma cobrança encontrada.
                                 </td>
                             </tr>
                         @endforelse
                     </tbody>
+
+                    @if ($contas->count() > 0)
+                        <tfoot>
+                            <tr class="bg-light font-weight-bold">
+                                <td colspan="4">
+                                    Total desta página
+                                </td>
+
+                                <td class="text-right">
+                                    {{ $formatMoney($totalPagina) }}
+                                </td>
+
+                                <td class="text-right">
+                                    {{ $formatMoney($totalAdminPagina) }}
+                                </td>
+
+                                <td class="text-right">
+                                    {{ $formatMoney($totalClientePagina) }}
+                                </td>
+
+                                <td colspan="3"></td>
+                            </tr>
+                        </tfoot>
+                    @endif
                 </table>
             </div>
         </div>
@@ -219,6 +289,15 @@
                 icon: 'success',
                 title: 'Sucesso',
                 text: @json(session('swal_success')),
+                confirmButtonText: 'OK'
+            });
+        @endif
+
+        @if ($errors->any())
+            Swal.fire({
+                icon: 'error',
+                title: 'Atenção',
+                html: @json(implode('<br>', $errors->all())),
                 confirmButtonText: 'OK'
             });
         @endif

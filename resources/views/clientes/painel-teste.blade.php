@@ -15,6 +15,10 @@
             return number_format((float) $valor, 2, ',', '.');
         };
 
+        $formatPercent = function ($valor) {
+            return number_format((float) $valor, 2, ',', '.') . '%';
+        };
+
         $abaAtiva = $aba ?? 'contabilidade';
     @endphp
 
@@ -76,17 +80,20 @@
                 Movimentos
             </a>
 
-            <a href="{{ route('cliente.painel-teste', ['aba' => 'itens', 'data_inicial' => $dataInicial, 'data_final' => $dataFinal]) }}"
+            <a href="{{ route('cliente.painel-teste', [
+                'aba' => 'itens',
+                'data_inicial' => $dataInicial,
+                'data_final' => $dataFinal,
+                'itens_page_size' => request('itens_page_size', 10),
+            ]) }}"
                 class="tab-item {{ $abaAtiva === 'itens' ? 'active' : '' }}">
                 <span class="tab-icon">🧾</span>
                 Itens
-            </a>
-
-            <a href="{{ route('cliente.painel-teste', ['aba' => 'configuracao', 'data_inicial' => $dataInicial, 'data_final' => $dataFinal]) }}"
-                class="tab-item {{ $abaAtiva === 'configuracao' ? 'active' : '' }}">
-                <span class="tab-icon">⚙️</span>
-                Configuração
-            </a>
+                <a href="{{ route('cliente.painel-teste', ['aba' => 'configuracao', 'data_inicial' => $dataInicial, 'data_final' => $dataFinal]) }}"
+                    class="tab-item {{ $abaAtiva === 'configuracao' ? 'active' : '' }}">
+                    <span class="tab-icon">⚙️</span>
+                    Configuração
+                </a>
 
         </div>
 
@@ -101,7 +108,8 @@
                                 <th>Usuário</th>
                                 <th class="text-right">Entradas</th>
                                 <th class="text-right">Saídas</th>
-                                <th class="text-right">Diferença do Diferença</th>
+                                <th class="text-right">Diferença</th>
+                                <th class="text-right">Comissão</th>
                                 <th>Bill Audit</th>
                             </tr>
                         </thead>
@@ -112,6 +120,11 @@
                                 <td class="text-right">{{ $formatMoney($resumo['entradas']) }}</td>
                                 <td class="text-right">{{ $formatMoney($resumo['saidas']) }}</td>
                                 <td class="text-right">{{ $formatMoney($resumo['diferenca']) }}</td>
+                                <td class="text-right">
+                                    {{ $formatMoney($resumo['comissao_cliente'] ?? 0) }}
+                                    <br>
+                                    <small>{{ $formatPercent($resumo['porcentagem_cliente'] ?? 0) }}</small>
+                                </td>
                                 <td>-</td>
                             </tr>
 
@@ -120,6 +133,9 @@
                                 <td class="text-right">{{ $formatMoney($resumo['entradas']) }}</td>
                                 <td class="text-right">{{ $formatMoney($resumo['saidas']) }}</td>
                                 <td class="text-right">{{ $formatMoney($resumo['diferenca']) }}</td>
+                                <td class="text-right">
+                                    {{ $formatMoney($resumo['comissao_cliente'] ?? 0) }}
+                                </td>
                                 <td></td>
                             </tr>
                         </tbody>
@@ -140,6 +156,7 @@
 
                         <p class="note-total">{{ $formatMoney($resumo['conta_saldo']) }}</p>
                     </div>
+
                     <div class="faturas-pendentes-box">
                         <h3>Faturas pendentes</h3>
 
@@ -154,7 +171,8 @@
                                         <th>Nº</th>
                                         <th>Fechamento</th>
                                         <th>Vencimento</th>
-                                        <th class="text-right">Valor</th>
+                                        <th class="text-right">Valor Total</th>
+                                        <th class="text-right">Comissão</th>
                                         <th>Status</th>
                                     </tr>
                                 </thead>
@@ -173,7 +191,13 @@
                                             </td>
 
                                             <td class="text-right">
-                                                {{ $formatMoney($fatura->valor_total) }}
+                                                {{ $formatMoney($fatura->valor_total_acerto ?? $fatura->valor_total) }}
+                                            </td>
+
+                                            <td class="text-right">
+                                                {{ $formatMoney($fatura->comissao_cliente ?? 0) }}
+                                                <br>
+                                                <small>{{ $formatPercent($fatura->porcentagem_cliente ?? 0) }}</small>
                                             </td>
 
                                             <td>
@@ -216,13 +240,14 @@
 
                     @if ($subAbaMovimentos === 'resumo')
 
-                        <table class="client-table">
+                        <table class="client-table movimento-resumo-table">
                             <thead>
                                 <tr>
                                     <th>Usuário</th>
                                     <th class="text-right">Entradas</th>
                                     <th class="text-right">Saídas</th>
-                                    <th class="text-right">Diferença do Diferença</th>
+                                    <th class="text-right">Diferença</th>
+                                    <th class="text-right">Comissão</th>
                                     <th class="text-right">%</th>
                                     <th>Data</th>
                                 </tr>
@@ -234,19 +259,27 @@
                                         <td>{{ $usuario->username ?? $usuario->name }}</td>
 
                                         <td class="text-right">
-                                            {{ $formatMoney($movimento->entradas) }}
+                                            {{ number_format((float) $movimento->entradas, 2, ',', '.') }}
                                         </td>
 
                                         <td class="text-right">
-                                            {{ $formatMoney($movimento->saidas) }}
+                                            {{ number_format((float) $movimento->saidas, 2, ',', '.') }}
                                         </td>
 
                                         <td class="text-right">
-                                            {{ $formatMoney($movimento->diferenca) }}
+                                            {{ number_format((float) $movimento->diferenca, 2, ',', '.') }}
                                         </td>
 
                                         <td class="text-right">
-                                            {{ number_format($movimento->porcentagem, 0) }}%
+                                            {{ number_format((float) ($movimento->comissao_cliente ?? 0), 2, ',', '.') }}
+                                            <br>
+                                            <small>
+                                                {{ number_format((float) ($movimento->porcentagem_cliente ?? 0), 2, ',', '.') }}%
+                                            </small>
+                                        </td>
+
+                                        <td class="text-right">
+                                            {{ number_format((float) $movimento->porcentagem, 0, ',', '.') }}%
                                         </td>
 
                                         <td>
@@ -255,13 +288,78 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="6" class="empty-row">
+                                        <td colspan="7" class="empty-row">
                                             Nenhum movimento encontrado.
                                         </td>
                                     </tr>
                                 @endforelse
                             </tbody>
                         </table>
+
+                        <div class="client-pagination">
+
+                            @if ($movimentos->onFirstPage())
+                                <button disabled>⏮</button>
+                                <button disabled>◀</button>
+                            @else
+                                <a href="{{ $movimentos->url(1) }}">⏮</a>
+                                <a href="{{ $movimentos->previousPageUrl() }}">◀</a>
+                            @endif
+
+                            @for ($pagina = 1; $pagina <= $movimentos->lastPage(); $pagina++)
+                                <a href="{{ $movimentos->url($pagina) }}"
+                                    class="{{ $movimentos->currentPage() == $pagina ? 'active' : '' }}">
+                                    {{ $pagina }}
+                                </a>
+                            @endfor
+
+                            @if ($movimentos->hasMorePages())
+                                <a href="{{ $movimentos->nextPageUrl() }}">▶</a>
+                                <a href="{{ $movimentos->url($movimentos->lastPage()) }}">⏭</a>
+                            @else
+                                <button disabled>▶</button>
+                                <button disabled>⏭</button>
+                            @endif
+
+                            <form method="GET" action="{{ route('cliente.painel-teste') }}" class="page-size-form"
+                                style="display:inline-flex; align-items:center; gap:6px; margin-left:12px;">
+                                <input type="hidden" name="aba" value="movimentos">
+                                <input type="hidden" name="subaba" value="resumo">
+                                <input type="hidden" name="data_inicial" value="{{ $dataInicial }}">
+                                <input type="hidden" name="data_final" value="{{ $dataFinal }}">
+
+                                <span class="page-size-label">Page size:</span>
+
+                                <select name="resumo_page_size" onchange="this.form.submit()">
+                                    <option value="10"
+                                        {{ (int) request('resumo_page_size', 10) === 10 ? 'selected' : '' }}>
+                                        10
+                                    </option>
+
+                                    <option value="25"
+                                        {{ (int) request('resumo_page_size', 10) === 25 ? 'selected' : '' }}>
+                                        25
+                                    </option>
+
+                                    <option value="50"
+                                        {{ (int) request('resumo_page_size', 10) === 50 ? 'selected' : '' }}>
+                                        50
+                                    </option>
+
+                                    <option value="100"
+                                        {{ (int) request('resumo_page_size', 10) === 100 ? 'selected' : '' }}>
+                                        100
+                                    </option>
+                                </select>
+                            </form>
+
+                            <span class="items-count">
+                                {{ $movimentos->total() }}
+                                itens in
+                                {{ $movimentos->lastPage() }}
+                                pages
+                            </span>
+                        </div>
 
                     @endif
 
@@ -344,14 +442,43 @@
                                 <button disabled>⏭</button>
                             @endif
 
-                            <span class="page-size-label">Page size:</span>
+                            <form method="GET" action="{{ route('cliente.painel-teste') }}" class="page-size-form"
+                                style="display:inline-flex; align-items:center; gap:6px; margin-left:12px;">
+                                <input type="hidden" name="aba" value="movimentos">
+                                <input type="hidden" name="subaba" value="detalhe">
+                                <input type="hidden" name="data_inicial" value="{{ $dataInicial }}">
+                                <input type="hidden" name="data_final" value="{{ $dataFinal }}">
 
-                            <select disabled>
-                                <option>{{ $movimentosDetalhe->perPage() }}</option>
-                            </select>
+                                <span class="page-size-label">Page size:</span>
+
+                                <select name="detalhe_page_size" onchange="this.form.submit()">
+                                    <option value="10"
+                                        {{ (int) request('detalhe_page_size', 10) === 10 ? 'selected' : '' }}>
+                                        10
+                                    </option>
+
+                                    <option value="25"
+                                        {{ (int) request('detalhe_page_size', 10) === 25 ? 'selected' : '' }}>
+                                        25
+                                    </option>
+
+                                    <option value="50"
+                                        {{ (int) request('detalhe_page_size', 10) === 50 ? 'selected' : '' }}>
+                                        50
+                                    </option>
+
+                                    <option value="100"
+                                        {{ (int) request('detalhe_page_size', 10) === 100 ? 'selected' : '' }}>
+                                        100
+                                    </option>
+                                </select>
+                            </form>
 
                             <span class="items-count">
-                                {{ $movimentosDetalhe->total() }} itens in {{ $movimentosDetalhe->lastPage() }} pages
+                                {{ $movimentosDetalhe->total() }}
+                                itens in
+                                {{ $movimentosDetalhe->lastPage() }}
+                                pages
                             </span>
 
                         </div>
@@ -365,8 +492,6 @@
             @if ($abaAtiva === 'itens')
 
                 <section class="client-panel-section">
-
-
 
                     <table class="items-table">
                         <thead>
@@ -419,7 +544,8 @@
                             @endforelse
                         </tbody>
                     </table>
-                    <div class="pager">
+
+                    <div class="client-pagination">
 
                         @if ($itens->onFirstPage())
                             <button disabled>⏮</button>
@@ -444,22 +570,55 @@
                             <button disabled>⏭</button>
                         @endif
 
-                        <span class="page-label">Page:</span>
-                        <input type="text" value="{{ $itens->currentPage() }}" readonly>
-                        <span>of {{ $itens->lastPage() }}</span>
+                        <form method="GET" action="{{ route('cliente.painel-teste') }}" class="page-size-form"
+                            style="display:inline-flex; align-items:center; gap:6px; margin-left:12px;">
+                            <input type="hidden" name="aba" value="itens">
+                            <input type="hidden" name="data_inicial" value="{{ $dataInicial }}">
+                            <input type="hidden" name="data_final" value="{{ $dataFinal }}">
 
-                        <span class="page-label">Page size:</span>
-                        <input type="text" value="{{ $itens->perPage() }}" readonly>
+                            <span class="page-size-label">Page size:</span>
+
+                            <select name="itens_page_size" onchange="this.form.submit()">
+                                <option value="10"
+                                    {{ (int) request('itens_page_size', 10) === 10 ? 'selected' : '' }}>
+                                    10
+                                </option>
+
+                                <option value="25"
+                                    {{ (int) request('itens_page_size', 10) === 25 ? 'selected' : '' }}>
+                                    25
+                                </option>
+
+                                <option value="50"
+                                    {{ (int) request('itens_page_size', 10) === 50 ? 'selected' : '' }}>
+                                    50
+                                </option>
+
+                                <option value="100"
+                                    {{ (int) request('itens_page_size', 10) === 100 ? 'selected' : '' }}>
+                                    100
+                                </option>
+                            </select>
+                        </form>
 
                         <span class="items-count">
                             Item {{ $itens->firstItem() ?? 0 }}
                             to {{ $itens->lastItem() ?? 0 }}
                             of {{ $itens->total() }}
                         </span>
+
+                        <span class="items-count">
+                            {{ $itens->total() }}
+                            itens in
+                            {{ $itens->lastPage() }}
+                            pages
+                        </span>
+
                     </div>
                 </section>
 
             @endif
+
             @if ($abaAtiva === 'configuracao')
                 <section class="client-panel-section configuracao-panel">
 
@@ -527,14 +686,19 @@
                 </button>
             </form>
 
-            <a href="{{ route('cliente.painel-teste', ['aba' => $abaAtiva, 'data_inicial' => $dataInicial, 'data_final' => $dataFinal]) }}"
+            <a href="{{ route('cliente.painel-teste', [
+                'aba' => 'movimentos',
+                'subaba' => 'detalhe',
+                'data_inicial' => $dataInicial,
+                'data_final' => $dataFinal,
+                'detalhe_page_size' => request('detalhe_page_size', 10),
+            ]) }}"
                 class="footer-button refresh-button">
                 Refresh 🔄
             </a>
         </footer>
 
     </div>
-
 
     <script>
         document.addEventListener('click', function(event) {
@@ -558,128 +722,6 @@
                 input.click();
             }
         });
-
-        // function formatarDataInput(data) {
-        //     const ano = data.getFullYear();
-        //     const mes = String(data.getMonth() + 1).padStart(2, '0');
-        //     const dia = String(data.getDate()).padStart(2, '0');
-
-        //     return ano + '-' + mes + '-' + dia;
-        // }
-
-        // function inicioDaSemana(data) {
-        //     const novaData = new Date(data);
-        //     const diaSemana = novaData.getDay();
-
-        //     const diferenca = diaSemana === 0 ? -6 : 1 - diaSemana;
-
-        //     novaData.setDate(novaData.getDate() + diferenca);
-        //     return novaData;
-        // }
-
-        // function fimDaSemana(data) {
-        //     const inicio = inicioDaSemana(data);
-        //     const fim = new Date(inicio);
-
-        //     fim.setDate(inicio.getDate() + 6);
-        //     return fim;
-        // }
-
-        // function aplicarPeriodoRapido(periodo) {
-        //     const hoje = new Date();
-
-        //     let dataInicial = new Date();
-        //     let dataFinal = new Date();
-        //     let texto = 'Hoje';
-
-        //     if (periodo === 'hoje') {
-        //         dataInicial = new Date(hoje);
-        //         dataFinal = new Date(hoje);
-        //         texto = 'Hoje';
-        //     }
-
-        //     if (periodo === 'ontem') {
-        //         dataInicial = new Date(hoje);
-        //         dataInicial.setDate(dataInicial.getDate() - 1);
-
-        //         dataFinal = new Date(dataInicial);
-        //         texto = 'Ontem';
-        //     }
-
-        //     if (periodo === 'semana_atual') {
-        //         dataInicial = inicioDaSemana(hoje);
-        //         dataFinal = fimDaSemana(hoje);
-        //         texto = 'Semana atual';
-        //     }
-
-        //     if (periodo === 'semana_anterior') {
-        //         const semanaPassada = new Date(hoje);
-        //         semanaPassada.setDate(semanaPassada.getDate() - 7);
-
-        //         dataInicial = inicioDaSemana(semanaPassada);
-        //         dataFinal = fimDaSemana(semanaPassada);
-        //         texto = 'Semana anterior';
-        //     }
-
-        //     if (periodo === 'mes_atual') {
-        //         dataInicial = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-        //         dataFinal = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
-        //         texto = 'Mês atual';
-        //     }
-
-        //     if (periodo === 'mes_anterior') {
-        //         dataInicial = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-        //         dataFinal = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
-        //         texto = 'Mês anterior';
-        //     }
-
-        //     const inputInicial = document.getElementById('data_inicial');
-        //     const inputFinal = document.getElementById('data_final');
-        //     const btnPeriodo = document.getElementById('btnPeriodoRapido');
-        //     const menu = document.getElementById('periodoMenu');
-
-        //     if (inputInicial) {
-        //         inputInicial.value = formatarDataInput(dataInicial);
-        //     }
-
-        //     if (inputFinal) {
-        //         inputFinal.value = formatarDataInput(dataFinal);
-        //     }
-
-        //     if (btnPeriodo) {
-        //         btnPeriodo.innerText = texto;
-        //     }
-
-        //     if (menu) {
-        //         menu.classList.remove('show');
-        //     }
-        // }
-
-        // document.addEventListener('click', function(event) {
-        //     const botaoPeriodo = event.target.closest('#btnPeriodoRapido');
-        //     const menu = document.getElementById('periodoMenu');
-
-        //     if (botaoPeriodo) {
-        //         if (menu) {
-        //             menu.classList.toggle('show');
-        //         }
-
-        //         return;
-        //     }
-
-        //     const opcaoPeriodo = event.target.closest('#periodoMenu button');
-
-        //     if (opcaoPeriodo) {
-        //         aplicarPeriodoRapido(opcaoPeriodo.dataset.periodo);
-        //         return;
-        //     }
-
-        //     if (menu && !event.target.closest('.periodo-field')) {
-        //         menu.classList.remove('show');
-        //     }
-        // });
-
-        // 1. Espera a página carregar totalmente
     </script>
 
     <script>

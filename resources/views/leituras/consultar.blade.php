@@ -8,7 +8,18 @@
 
 @section('content')
 
-    
+    @php
+        $formatMoney = function ($valor) {
+            $valor = (float) $valor;
+
+            if (floor($valor) == $valor) {
+                return number_format($valor, 0, ',', '.');
+            }
+
+            return number_format($valor, 2, ',', '.');
+        };
+    @endphp
+
     <div class="card">
 
         <div class="card-header">
@@ -19,7 +30,7 @@
 
             <div class="p-3 bg-light border-bottom">
 
-                <form method="GET" action="{{ route('leituras.consultar') }}">
+                <form method="GET" action="{{ route('leituras.consultar') }}" id="form-consultar-leituras">
 
                     <input type="hidden" name="pesquisar" value="1">
 
@@ -27,7 +38,7 @@
 
                         @if (in_array($nivel, [1, 2]))
                             <div class="col-md-4">
-                                <div class="input-group">
+                                <div class="input-group mb-2">
                                     <div class="input-group-prepend">
                                         <span class="input-group-text">
                                             Cliente
@@ -35,7 +46,7 @@
                                     </div>
 
                                     <select name="cliente" class="form-control">
-                                        <option value="">Selecione</option>
+                                        <option value="">Todos</option>
 
                                         @foreach ($clientes as $cliente)
                                             <option value="{{ $cliente->id }}"
@@ -50,7 +61,7 @@
 
                         @if ($nivel === 3)
                             <div class="col-md-4">
-                                <div class="input-group">
+                                <div class="input-group mb-2">
                                     <div class="input-group-prepend">
                                         <span class="input-group-text">
                                             Ponto
@@ -58,7 +69,7 @@
                                     </div>
 
                                     <select name="ponto" class="form-control">
-                                        <option value="">Selecione</option>
+                                        <option value="">Todos</option>
 
                                         @foreach ($pontos as $ponto)
                                             <option value="{{ $ponto->id }}"
@@ -72,7 +83,7 @@
                         @endif
 
                         <div class="col-md-3">
-                            <div class="input-group">
+                            <div class="input-group mb-2">
                                 <div class="input-group-prepend">
                                     <span class="input-group-text">
                                         Status Leitura
@@ -80,7 +91,7 @@
                                 </div>
 
                                 <select name="status_leitura" class="form-control">
-                                    <option value="">Selecione</option>
+                                    <option value="">Todos</option>
 
                                     <option value="1" {{ (string) $statusLeitura === '1' ? 'selected' : '' }}>
                                         Aberta
@@ -94,7 +105,7 @@
                         </div>
 
                         <div class="col-md-2">
-                            <button type="submit" class="btn btn-info">
+                            <button type="submit" class="btn btn-info btn-block mb-2" id="btn-pesquisar">
                                 Pesquisar
                             </button>
                         </div>
@@ -113,6 +124,9 @@
                         <thead>
                             <tr>
                                 <th>Descrição do acerto</th>
+                                <th>Status</th>
+                                <th class="text-right">Entrada</th>
+                                <th class="text-right">Saída</th>
                                 <th class="text-right">Saldo</th>
                             </tr>
                         </thead>
@@ -125,20 +139,49 @@
                                         -
                                         Leitura de
                                         {{ $leitura->dataorder ? \Carbon\Carbon::parse($leitura->dataorder)->format('d/m/Y') : '-' }}
+
+                                        @if (!empty($leitura->ponto_nome))
+                                            <br>
+                                            <small>Ponto: {{ $leitura->ponto_nome }}</small>
+                                        @endif
+                                    </td>
+
+                                    <td>
+                                        @if ((int) $leitura->status_leitura === 1)
+                                            <span class="badge badge-warning">
+                                                Aberta
+                                            </span>
+                                        @elseif ((int) $leitura->status_leitura === 2)
+                                            <span class="badge badge-secondary">
+                                                Fechada
+                                            </span>
+                                        @else
+                                            <span class="badge badge-light">
+                                                {{ $leitura->status_leitura_nome ?? 'Indefinida' }}
+                                            </span>
+                                        @endif
                                     </td>
 
                                     <td class="text-right">
-                                        {{ number_format($leitura->saldo_total, 0, '.', '') }}
+                                        {{ $formatMoney($leitura->entrada_acerto ?? 0) }}
+                                    </td>
+
+                                    <td class="text-right">
+                                        {{ $formatMoney($leitura->saida_acerto ?? 0) }}
+                                    </td>
+
+                                    <td class="text-right">
+                                        {{ $formatMoney($leitura->saldo_acerto ?? $leitura->saldo_total) }}
                                     </td>
                                 </tr>
                             @endforeach
 
                             <tr class="linha-separadora">
-                                <td colspan="2"></td>
+                                <td colspan="5"></td>
                             </tr>
 
                             <tr>
-                                <td>
+                                <td colspan="2">
                                     <div class="barcode-legado">
                                         @for ($i = 1; $i <= 20; $i++)
                                             <span></span>
@@ -147,24 +190,33 @@
                                 </td>
 
                                 <td class="text-right">
-                                    <strong>Saldo Total</strong>
+                                    <strong>Total Entrada</strong>
+                                    <br>
+                                    {{ $formatMoney($totalEntrada ?? 0) }}
+                                </td>
 
-                                    <span class="ml-5">
-                                        {{ number_format($saldoTotal, 0, '.', '') }}
-                                    </span>
+                                <td class="text-right">
+                                    <strong>Total Saída</strong>
+                                    <br>
+                                    {{ $formatMoney($totalSaida ?? 0) }}
+                                </td>
+
+                                <td class="text-right">
+                                    <strong>Saldo Total</strong>
+                                    <br>
+                                    {{ $formatMoney($saldoTotal ?? 0) }}
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 @elseif ($pesquisou)
                     <div class="alert alert-warning mb-0">
-                        Nenhuma fatura foi encontrada!
+                        Nenhuma leitura foi encontrada!
                     </div>
                 @else
                     <div class="alert alert-info mb-0">
                         Selecione os filtros e clique em pesquisar.
                     </div>
-
                 @endif
 
             </div>
@@ -218,5 +270,37 @@
         .barcode-legado span:nth-child(3n) {
             width: 3px;
         }
+
+        @media (max-width: 767.98px) {
+            .input-group {
+                margin-bottom: 8px;
+            }
+
+            .btn-block {
+                width: 100%;
+            }
+
+            .leitura-resumo {
+                min-width: 720px;
+            }
+        }
     </style>
+@stop
+
+@section('js')
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const form = document.getElementById('form-consultar-leituras');
+            const btn = document.getElementById('btn-pesquisar');
+
+            if (!form || !btn) {
+                return;
+            }
+
+            form.addEventListener('submit', function () {
+                btn.innerText = 'Loading...';
+                btn.disabled = true;
+            });
+        });
+    </script>
 @stop

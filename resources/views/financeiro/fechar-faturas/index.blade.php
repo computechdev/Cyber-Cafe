@@ -275,7 +275,7 @@
                     <div class="row">
                         <div class="col-lg-3 col-md-6 col-6">
                             <div class="summary-clean">
-                                <div class="summary-clean-label">Entrada</div>
+                                <div class="summary-clean-label">Entrada do Acerto</div>
                                 <p class="summary-clean-value text-info">
                                     {{ $formatMoney($totais['entrada'] ?? 0) }}
                                 </p>
@@ -284,7 +284,7 @@
 
                         <div class="col-lg-3 col-md-6 col-6">
                             <div class="summary-clean">
-                                <div class="summary-clean-label">Saída</div>
+                                <div class="summary-clean-label">Saída do Acerto</div>
                                 <p class="summary-clean-value text-warning">
                                     {{ $formatMoney($totais['saida'] ?? 0) }}
                                 </p>
@@ -293,7 +293,7 @@
 
                         <div class="col-lg-3 col-md-6 col-6">
                             <div class="summary-clean">
-                                <div class="summary-clean-label">Saldo total</div>
+                                <div class="summary-clean-label">Saldo do Acerto</div>
                                 <p class="summary-clean-value text-dark">
                                     {{ $formatMoney($totais['saldo'] ?? 0) }}
                                 </p>
@@ -407,23 +407,23 @@
 
                                 <div class="desktop-acerto-grid">
                                     <div class="desktop-acerto-item">
-                                        <div class="desktop-acerto-label">Entrada</div>
+                                        <div class="desktop-acerto-label">Entrada do Acerto</div>
                                         <p class="desktop-acerto-value text-info">
-                                            {{ $formatMoney($metrica->entrada ?? 0) }}
+                                            {{ $formatMoney($metrica->entrada_acerto ?? 0) }}
                                         </p>
                                     </div>
 
                                     <div class="desktop-acerto-item">
-                                        <div class="desktop-acerto-label">Saída</div>
+                                        <div class="desktop-acerto-label">Saída do Acerto</div>
                                         <p class="desktop-acerto-value text-warning">
-                                            {{ $formatMoney($metrica->saida ?? 0) }}
+                                            {{ $formatMoney($metrica->saida_acerto ?? 0) }}
                                         </p>
                                     </div>
 
                                     <div class="desktop-acerto-item">
-                                        <div class="desktop-acerto-label">Saldo</div>
+                                        <div class="desktop-acerto-label">Saldo do Acerto</div>
                                         <p class="desktop-acerto-value">
-                                            {{ $formatMoney($metrica->saldo_total ?? 0) }}
+                                            {{ $formatMoney($metrica->saldo_acerto ?? 0) }}
                                         </p>
                                     </div>
 
@@ -502,6 +502,41 @@
                                                 </tr>
 
                                                 <tr>
+                                                    <th>Entrada atual</th>
+                                                    <td>{{ $formatMoney($metrica->entrada_atual ?? 0) }}</td>
+                                                </tr>
+
+                                                <tr>
+                                                    <th>Entrada anterior</th>
+                                                    <td>{{ $formatMoney($metrica->entrada_anterior_numero ?? 0) }}</td>
+                                                </tr>
+
+                                                <tr>
+                                                    <th>Entrada do acerto</th>
+                                                    <td>{{ $formatMoney($metrica->entrada_acerto ?? 0) }}</td>
+                                                </tr>
+
+                                                <tr>
+                                                    <th>Saída atual</th>
+                                                    <td>{{ $formatMoney($metrica->saida_atual ?? 0) }}</td>
+                                                </tr>
+
+                                                <tr>
+                                                    <th>Saída anterior</th>
+                                                    <td>{{ $formatMoney($metrica->saida_anterior_numero ?? 0) }}</td>
+                                                </tr>
+
+                                                <tr>
+                                                    <th>Saída do acerto</th>
+                                                    <td>{{ $formatMoney($metrica->saida_acerto ?? 0) }}</td>
+                                                </tr>
+
+                                                <tr>
+                                                    <th>Saldo do acerto</th>
+                                                    <td>{{ $formatMoney($metrica->saldo_acerto ?? 0) }}</td>
+                                                </tr>
+
+                                                <tr>
                                                     <th>% Admin</th>
                                                     <td>{{ $formatPercent($metrica->porcentagem_admin ?? 0) }}</td>
                                                 </tr>
@@ -569,18 +604,18 @@
                                 </div>
 
                                 <div class="mobile-acerto-line">
-                                    <span>Entrada</span>
-                                    <strong>{{ $formatMoney($metrica->entrada ?? 0) }}</strong>
+                                    <span>Entrada do Acerto</span>
+                                    <strong>{{ $formatMoney($metrica->entrada_acerto ?? 0) }}</strong>
                                 </div>
 
                                 <div class="mobile-acerto-line">
-                                    <span>Saída</span>
-                                    <strong>{{ $formatMoney($metrica->saida ?? 0) }}</strong>
+                                    <span>Saída do Acerto</span>
+                                    <strong>{{ $formatMoney($metrica->saida_acerto ?? 0) }}</strong>
                                 </div>
 
                                 <div class="mobile-acerto-line">
-                                    <span>Saldo total</span>
-                                    <strong>{{ $formatMoney($metrica->saldo_total ?? 0) }}</strong>
+                                    <span>Saldo do Acerto</span>
+                                    <strong>{{ $formatMoney($metrica->saldo_acerto ?? 0) }}</strong>
                                 </div>
 
                                 <div class="mobile-acerto-line">
@@ -623,9 +658,15 @@
                                         <th>Ponto</th>
                                         <th>Data</th>
 
-                                        <th class="text-right">Entrada</th>
-                                        <th class="text-right">Saída</th>
-                                        <th class="text-right">Saldo</th>
+                                        <th class="text-right">Entrada Atual</th>
+                                        <th class="text-right">Entrada Anterior</th>
+                                        <th class="text-right">Entrada Acerto</th>
+
+                                        <th class="text-right">Saída Atual</th>
+                                        <th class="text-right">Saída Anterior</th>
+                                        <th class="text-right">Saída Acerto</th>
+
+                                        <th class="text-right">Saldo Acerto</th>
 
                                         <th class="text-right">% Admin</th>
                                         <th class="text-right">Resumo Admin</th>
@@ -656,9 +697,15 @@
                                                 {{ $metrica->dataorder ? \Carbon\Carbon::parse($metrica->dataorder)->format('d/m/Y H:i') : '-' }}
                                             </td>
 
-                                            <td class="text-right">{{ $formatMoney($metrica->entrada ?? 0) }}</td>
-                                            <td class="text-right">{{ $formatMoney($metrica->saida ?? 0) }}</td>
-                                            <td class="text-right">{{ $formatMoney($metrica->saldo_total ?? 0) }}</td>
+                                            <td class="text-right">{{ $formatMoney($metrica->entrada_atual ?? 0) }}</td>
+                                            <td class="text-right">{{ $formatMoney($metrica->entrada_anterior_numero ?? 0) }}</td>
+                                            <td class="text-right">{{ $formatMoney($metrica->entrada_acerto ?? 0) }}</td>
+
+                                            <td class="text-right">{{ $formatMoney($metrica->saida_atual ?? 0) }}</td>
+                                            <td class="text-right">{{ $formatMoney($metrica->saida_anterior_numero ?? 0) }}</td>
+                                            <td class="text-right">{{ $formatMoney($metrica->saida_acerto ?? 0) }}</td>
+
+                                            <td class="text-right">{{ $formatMoney($metrica->saldo_acerto ?? 0) }}</td>
 
                                             <td class="text-right">{{ $formatPercent($metrica->porcentagem_admin ?? 0) }}</td>
                                             <td class="text-right">{{ $formatMoney($metrica->valor_admin ?? 0) }}</td>
@@ -702,8 +749,14 @@
                                     <tr class="bg-light font-weight-bold">
                                         <td colspan="4">Totais</td>
 
+                                        <td class="text-right">-</td>
+                                        <td class="text-right">-</td>
                                         <td class="text-right">{{ $formatMoney($totais['entrada'] ?? 0) }}</td>
+
+                                        <td class="text-right">-</td>
+                                        <td class="text-right">-</td>
                                         <td class="text-right">{{ $formatMoney($totais['saida'] ?? 0) }}</td>
+
                                         <td class="text-right">{{ $formatMoney($totais['saldo'] ?? 0) }}</td>
 
                                         <td class="text-right">-</td>
@@ -732,7 +785,7 @@
                         action="{{ route('contas-receber.fechar.store') }}"
                         class="form-confirmar-acao mt-3"
                         data-titulo="Fechar fatura?"
-                        data-texto="Será fechada a fatura aberta de {{ $cliente->name }}. Resumo admin: {{ $formatMoney($totais['valor_admin'] ?? 0) }}."
+                        data-texto="Será fechada a fatura aberta de {{ $cliente->name }}. Saldo do acerto: {{ $formatMoney($totais['saldo'] ?? 0) }}. Resumo admin: {{ $formatMoney($totais['valor_admin'] ?? 0) }}."
                         data-confirmar="Sim, fechar fatura"
                         data-icon="warning">
                         @csrf
