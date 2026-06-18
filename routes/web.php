@@ -264,20 +264,21 @@ Route::middleware(['auth', 'nivel:1'])->group(function () {
     Route::post('/tablets/{id}/retirada-creditos', [TabletController::class, 'retiradaCreditos'])
         ->name('tablets.retirada-creditos');
 
-    
-        Route::get('/financeiro/fechar-faturas', [ContasReceberController::class, 'fecharIndex'])
-            ->name('contas-receber.fechar.index');
 
-        Route::post('/financeiro/fechar-faturas', [ContasReceberController::class, 'fecharFatura'])
-            ->name('contas-receber.fechar.store');
+    Route::get('/financeiro/fechar-faturas', [ContasReceberController::class, 'fecharIndex'])
+        ->name('contas-receber.fechar.index');
 
-        Route::get('/financeiro/contas-receber', [ContasReceberController::class, 'index'])
-            ->name('contas-receber.index');
+    Route::post('/financeiro/fechar-faturas', [ContasReceberController::class, 'fecharFatura'])
+        ->name('contas-receber.fechar.store');
 
-        Route::post('/financeiro/contas-receber/{id}/marcar-pago', [ContasReceberController::class, 'marcarPago'])
-            ->name('contas-receber.marcar-pago');
-   
+    Route::get('/financeiro/contas-receber', [ContasReceberController::class, 'index'])
+        ->name('contas-receber.index');
 
+    Route::post('/financeiro/contas-receber/{id}/marcar-pago', [ContasReceberController::class, 'marcarPago'])
+        ->name('contas-receber.marcar-pago');
+
+    Route::get('/contas-receber/{id}/pdf', [ContasReceberController::class, 'baixarPdf'])
+        ->name('contas-receber.pdf');
 });
 
 

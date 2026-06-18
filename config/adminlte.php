@@ -64,11 +64,12 @@ return [
     */
 
     'logo' => '<b>Cyber </b>Café',
-    'logo_img' => 'vendor/adminlte/dist/img/AdminLTELogo.png',
-    'logo_img_class' => 'brand-image img-circle elevation-3',
+    'logo_img' => '/sistema/imagens/logo-cyber-512.png',
+    // 'logo_img_class' => 'brand-image img-circle elevation-3',
+    'logo_img_class' => 'brand-image img-retangle elevation-3',
     'logo_img_xl' => null,
     'logo_img_xl_class' => 'brand-image-xs',
-    'logo_img_alt' => 'Admin Logo',
+    'logo_img_alt' => 'Cyber Café',
 
     /*
     |--------------------------------------------------------------------------
@@ -86,7 +87,7 @@ return [
     'auth_logo' => [
         'enabled' => false,
         'img' => [
-            'path' => 'vendor/adminlte/dist/img/AdminLTELogo.png',
+            'path' => '/sistema/imagens/logo-cyber-512.png',
             'alt' => 'Auth Logo',
             'class' => '',
             'width' => 50,
@@ -113,7 +114,7 @@ return [
         'enabled' => true,
         'mode' => 'fullscreen',
         'img' => [
-            'path' => 'vendor/adminlte/dist/img/AdminLTELogo.png',
+            'path' => '/sistema/imagens/logo-cyber-512.png',
             'alt' => 'AdminLTE Preloader Image',
             'effect' => 'animation__shake',
             'width' => 60,
@@ -257,7 +258,7 @@ return [
     */
 
     'use_route_url' => false,
-    'dashboard_url' => 'home',
+    'dashboard_url' => '/dashboard',
     'logout_url' => 'logout',
     'login_url' => 'login',
     'register_url' => 'register',
@@ -325,7 +326,7 @@ return [
                 [
                     'text' => 'Clientes',
                     'url' => 'usuarios/clientes',
-                    'icon' => 'far fa-fw fa-circle',
+                    'icon' => 'fa fa-user-plus',
                 ]
             ],
         ],
@@ -385,7 +386,7 @@ return [
                     'url' => 'transacoes/entradas-saidas',
                     'icon' => 'fas fa-fw fa-random',
                 ],
-                [
+            [
                     'text' => 'Movimentação por Período',
                     'url' => 'transacoes/movimentacao-periodo',
                     'icon' => 'fas fa-fw fa-calendar-week',

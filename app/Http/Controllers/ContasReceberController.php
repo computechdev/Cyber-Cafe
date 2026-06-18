@@ -757,62 +757,248 @@ class ContasReceberController extends Controller
     }
 
     private function buscarValorTotalAcertoContasReceber($conta)
-{
-    $idsMetricas = [];
+    {
+        $idsMetricas = [];
 
-    /*
-    |--------------------------------------------------------------------------
-    | Preferência 1: IDs salvos no fechamento
-    |--------------------------------------------------------------------------
-    | No fechamento salvamos:
-    | cobranca_agregado.lote_fechamento_id_cobrancas
-    */
-    if (!empty($conta->lote_fechamento_id_cobrancas)) {
-        $idsMetricas = collect(explode(',', $conta->lote_fechamento_id_cobrancas))
+        /*
+        |--------------------------------------------------------------------------
+        | Preferência 1: IDs salvos no fechamento
+        |--------------------------------------------------------------------------
+        | No fechamento salvamos:
+        | cobranca_agregado.lote_fechamento_id_cobrancas
+        */
+        if (!empty($conta->lote_fechamento_id_cobrancas)) {
+            $idsMetricas = collect(explode(',', $conta->lote_fechamento_id_cobrancas))
+                ->map(function ($id) {
+                    return (int) trim($id);
+                })
+                ->filter(function ($id) {
+                    return $id > 0;
+                })
+                ->values()
+                ->toArray();
+        }
+
+        if (!empty($idsMetricas)) {
+            return (float) DB::table('metricas')
+                ->whereIn('id', $idsMetricas)
+                ->sum('saldo_total');
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Preferência 2: locações vinculadas
+        |--------------------------------------------------------------------------
+        | cobranca_agregado.id_cobranca
+        |      ↓
+        | cobranca_locacao.id_cobranca_agregado
+        |      ↓
+        | metricas.id_cobranca
+        */
+        $idsLocacoes = DB::table('cobranca_locacao')
+            ->where('id_cobranca_agregado', $conta->id_cobranca)
+            ->pluck('id_cobranca')
             ->map(function ($id) {
-                return (int) trim($id);
+                return (int) $id;
             })
             ->filter(function ($id) {
                 return $id > 0;
             })
             ->values()
             ->toArray();
+
+        if (!empty($idsLocacoes)) {
+            return (float) DB::table('metricas')
+                ->whereIn('id_cobranca', $idsLocacoes)
+                ->sum('saldo_total');
+        }
+
+        return 0;
+    }
+    
+    public function baixarPdf($id)
+    {
+        $conta = $this->buscarContaReceberParaPdf($id);
+
+        if (!$conta) {
+            return redirect()
+                ->route('contas-receber.index')
+                ->with('swal_error', 'Fatura não encontrada.');
+        }
+
+        $metricas = $this->buscarMetricasDaFaturaParaPdf($conta);
+
+        $valorTotalAcerto = (float) $metricas->sum('saldo_acerto');
+
+        if ($valorTotalAcerto == 0) {
+            $valorTotalAcerto = (float) ($conta->valor_total ?? 0);
+        }
+
+        $porcentagemAdmin = (float) ($conta->admin_porcentagem ?? 0);
+        $porcentagemCliente = (float) ($conta->cliente_porcentagem ?? 0);
+
+        $valorAdmin = $valorTotalAcerto * ($porcentagemAdmin / 100);
+        $valorCliente = $valorTotalAcerto * ($porcentagemCliente / 100);
+
+        $dados = [
+            'conta' => $conta,
+            'metricas' => $metricas,
+
+            'valorTotalAcerto' => $valorTotalAcerto,
+            'porcentagemAdmin' => $porcentagemAdmin,
+            'porcentagemCliente' => $porcentagemCliente,
+            'valorAdmin' => $valorAdmin,
+            'valorCliente' => $valorCliente,
+
+            'geradoEm' => now(),
+        ];
+
+        $pdf = app('dompdf.wrapper');
+
+        $pdf->loadView('financeiro.contas-receber.pdf', $dados)
+            ->setPaper('a4', 'portrait');
+
+        $nomeArquivo = 'fatura-' . $conta->id_cobranca . '.pdf';
+
+        return $pdf->download($nomeArquivo);
     }
 
-    if (!empty($idsMetricas)) {
-        return (float) DB::table('metricas')
-            ->whereIn('id', $idsMetricas)
-            ->sum('saldo_total');
+    private function buscarContaReceberParaPdf($id)
+    {
+        return DB::table('cobranca_agregado')
+            ->join('users as cliente_user', 'cliente_user.id', '=', 'cobranca_agregado.id_cliente')
+            ->leftJoin('users as admin_user', 'admin_user.id', '=', 'cliente_user.id_apoio')
+            ->select(
+                'cobranca_agregado.*',
+
+                'cliente_user.id as cliente_id',
+                'cliente_user.name as cliente_nome',
+                'cliente_user.username as cliente_username',
+                'cliente_user.porcentagem as cliente_porcentagem',
+
+                'admin_user.id as admin_id',
+                'admin_user.name as admin_nome',
+                'admin_user.username as admin_username',
+                'admin_user.porcentagem as admin_porcentagem'
+            )
+            ->where('cobranca_agregado.id_cobranca', $id)
+            ->where('cobranca_agregado.ativo', 1)
+            ->first();
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Preferência 2: locações vinculadas
-    |--------------------------------------------------------------------------
-    | cobranca_agregado.id_cobranca
-    |      ↓
-    | cobranca_locacao.id_cobranca_agregado
-    |      ↓
-    | metricas.id_cobranca
-    */
-    $idsLocacoes = DB::table('cobranca_locacao')
-        ->where('id_cobranca_agregado', $conta->id_cobranca)
-        ->pluck('id_cobranca')
-        ->map(function ($id) {
-            return (int) $id;
-        })
-        ->filter(function ($id) {
-            return $id > 0;
-        })
-        ->values()
-        ->toArray();
+    private function buscarMetricasDaFaturaParaPdf($conta)
+    {
+        $idsMetricas = $this->buscarIdsMetricasDaFaturaParaPdf($conta);
 
-    if (!empty($idsLocacoes)) {
-        return (float) DB::table('metricas')
-            ->whereIn('id_cobranca', $idsLocacoes)
-            ->sum('saldo_total');
+        if (empty($idsMetricas)) {
+            return collect();
+        }
+
+        return DB::table('metricas')
+            ->join('tablet', 'tablet.idprod', '=', 'metricas.idprod')
+            ->leftJoin('ponto', 'ponto.id', '=', 'tablet.id_ponto')
+            ->select(
+                'metricas.id',
+                'metricas.idprod',
+                'metricas.dataorder',
+                'metricas.entrada',
+                'metricas.saida',
+                'metricas.entrada_anterior',
+                'metricas.saida_anterior',
+                'metricas.saldo_total',
+                'metricas.status_leitura',
+
+                'tablet.cliente as tablet_cliente',
+                'tablet.id_ponto',
+
+                'ponto.nome as ponto_nome',
+                'ponto.porcent_ponto'
+            )
+            ->whereIn('metricas.id', $idsMetricas)
+            ->orderBy('metricas.idprod')
+            ->orderBy('metricas.dataorder')
+            ->get()
+            ->map(function ($metrica) {
+                $entradaAtual = (float) ($metrica->entrada ?? 0);
+                $saidaAtual = (float) ($metrica->saida ?? 0);
+
+                $entradaAnterior = (float) ($metrica->entrada_anterior ?? 0);
+                $saidaAnterior = (float) ($metrica->saida_anterior ?? 0);
+
+                $metrica->entrada_acerto = $entradaAtual - $entradaAnterior;
+                $metrica->saida_acerto = $saidaAtual - $saidaAnterior;
+                $metrica->saldo_acerto = (float) ($metrica->saldo_total ?? 0);
+
+                if ((int) $metrica->status_leitura === 1) {
+                    $metrica->status_nome = 'Aberta';
+                } elseif ((int) $metrica->status_leitura === 2) {
+                    $metrica->status_nome = 'Fechada';
+                } else {
+                    $metrica->status_nome = 'Indefinida';
+                }
+
+                return $metrica;
+            });
     }
 
-    return 0;
-}
+    private function buscarIdsMetricasDaFaturaParaPdf($conta)
+    {
+        $idsMetricas = [];
+
+        /*
+        |--------------------------------------------------------------------------
+        | Preferência 1: IDs salvos na cobrança agregada
+        |--------------------------------------------------------------------------
+        */
+        if (!empty($conta->lote_fechamento_id_cobrancas)) {
+            $idsMetricas = collect(explode(',', $conta->lote_fechamento_id_cobrancas))
+                ->map(function ($id) {
+                    return (int) trim($id);
+                })
+                ->filter(function ($id) {
+                    return $id > 0;
+                })
+                ->unique()
+                ->values()
+                ->toArray();
+        }
+
+        if (!empty($idsMetricas)) {
+            return $idsMetricas;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Preferência 2: localizar pelas locações vinculadas
+        |--------------------------------------------------------------------------
+        */
+        $idsLocacoes = DB::table('cobranca_locacao')
+            ->where('id_cobranca_agregado', $conta->id_cobranca)
+            ->pluck('id_cobranca')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->values()
+            ->toArray();
+
+        if (!empty($idsLocacoes)) {
+            return DB::table('metricas')
+                ->whereIn('id_cobranca', $idsLocacoes)
+                ->pluck('id')
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function ($id) {
+                    return $id > 0;
+                })
+                ->unique()
+                ->values()
+                ->toArray();
+        }
+
+        return [];
+    }
 }

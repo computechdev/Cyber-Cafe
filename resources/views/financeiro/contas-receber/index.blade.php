@@ -168,25 +168,27 @@
                                 </td>
 
                                 <td>
+                                    <a href="{{ route('contas-receber.pdf', $conta->id_cobranca) }}"
+                                        class="btn btn-sm btn-danger mb-1" target="_blank">
+                                        <i class="fas fa-file-pdf"></i>
+                                        Baixar PDF
+                                    </a>
+
                                     @if ((int) $conta->pago === 0)
-                                        <form
-                                            method="POST"
+                                        <form method="POST"
                                             action="{{ route('contas-receber.marcar-pago', $conta->id_cobranca) }}"
-                                            class="d-inline form-confirmar-acao"
-                                            data-titulo="Marcar como pago?"
-                                            data-texto="Confirmar baixa da fatura nº {{ $conta->id_cobranca }}? Valor total: {{ $formatMoney($conta->valor_total_acerto ?? $conta->valor_total) }}. Admin: {{ $formatMoney($conta->valor_admin ?? 0) }}. Cliente: {{ $formatMoney($conta->valor_cliente ?? 0) }}."
-                                            data-confirmar="Sim, marcar pago"
-                                            data-icon="warning"
-                                        >
+                                            class="d-inline form-confirmar-acao" data-titulo="Marcar como pago?"
+                                            data-texto="Confirmar baixa da fatura nº {{ $conta->id_cobranca }}?"
+                                            data-confirmar="Sim, marcar pago" data-icon="warning">
                                             @csrf
 
-                                            <button type="submit" class="btn btn-sm btn-success">
+                                            <button type="submit" class="btn btn-sm btn-success mb-1">
                                                 <i class="fas fa-check"></i>
                                                 Marcar Pago / Baixar
                                             </button>
                                         </form>
                                     @else
-                                        <button class="btn btn-sm btn-secondary" disabled>
+                                        <button class="btn btn-sm btn-secondary mb-1" disabled>
                                             <i class="fas fa-check"></i>
                                             Pago
                                         </button>

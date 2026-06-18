@@ -1025,7 +1025,7 @@ class TabletApiController extends Controller
             'id_cobranca_ponto' => $idCobrancaPonto,
         ];
     }
-    
+
     public function verificarStatus(Request $request)
     {
         if (!$request->filled('idprod') || !$request->filled('dono')) {
@@ -1176,4 +1176,109 @@ class TabletApiController extends Controller
             ->header('Content-Type', 'text/plain');
     }
 
+    public function pesquisaUltimasTransacoes(Request $request)
+    {
+        $idprod = strtoupper(substr(trim($request->get('idprod', '')), 0, 20));
+        $tipo = trim($request->get('tipo', ''));
+
+        /*
+        |--------------------------------------------------------------------------
+        | Compatibilidade com legado
+        |--------------------------------------------------------------------------
+        | No legado não havia validação forte.
+        | Se faltar parâmetro, retornamos NULL para não quebrar a Unity.
+        */
+        if (empty($idprod) || $tipo === '') {
+            return response('NULL', 200)
+                ->header('Content-Type', 'text/plain');
+        }
+
+        $transacoes = DB::table('transacoes')
+            ->where('idprod', $idprod)
+            ->where('tipo', $tipo)
+            ->orderByDesc('data_hora')
+            ->limit(14)
+            ->get();
+
+        if ($transacoes->isEmpty()) {
+            return response('NULL', 200)
+                ->header('Content-Type', 'text/plain');
+        }
+
+        $resposta = '';
+
+        foreach ($transacoes as $transacao) {
+            $dataHora = $transacao->data_hora ?? '';
+            $valor = $this->formatarValorTransacaoLegado($transacao->valor ?? 0);
+
+            $resposta .= $dataHora
+                . '----------------------------------------------------------------------'
+                . 'R$ '
+                . $valor
+                . '#';
+        }
+
+        return response($resposta, 200)
+            ->header('Content-Type', 'text/plain');
+    }
+
+    private function formatarValorTransacaoLegado($valor)
+    {
+        $valor = (float) ($valor ?? 0);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Formato legado
+        |--------------------------------------------------------------------------
+        | O legado imprimia:
+        | R$ 10,00
+        |
+        | Mesmo quando o valor vinha inteiro.
+        */
+        return number_format($valor, 2, ',', '.');
+    }
+
+    public function addCrashLog(Request $request)
+    {
+        try {
+            $idprod = strtoupper(substr(trim($request->get('idprod', '')), 0, 20));
+            $platform = substr(trim($request->get('platform', '')), 0, 100);
+            $version = substr(trim($request->get('version', '')), 0, 100);
+            $text = trim($request->get('text', ''));
+
+            /*
+            |--------------------------------------------------------------------------
+            | Compatibilidade com legado
+            |--------------------------------------------------------------------------
+            | O legado gravava direto e retornava o resultado do mysql_query.
+            | Aqui, se faltar algo importante, retornamos 0 em text/plain.
+            */
+            if (empty($idprod) || empty($text)) {
+                return response('0', 200)
+                    ->header('Content-Type', 'text/plain');
+            }
+
+            $result = DB::table('crashlog')->insert([
+                'datetime' => now()->format('Y-m-d H:i:s'),
+                'idprod' => $idprod,
+                'platform' => $platform,
+                'version' => $version,
+                'text' => $text,
+            ]);
+
+            return response($result ? '1' : '0', 200)
+                ->header('Content-Type', 'text/plain');
+
+        } catch (\Throwable $e) {
+            \Log::error('Erro add_crashlog.php', [
+                'erro' => $e->getMessage(),
+                'linha' => $e->getLine(),
+                'arquivo' => $e->getFile(),
+                'request' => $request->all(),
+            ]);
+
+            return response('0', 200)
+                ->header('Content-Type', 'text/plain');
+        }
+    }
 }

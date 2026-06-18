@@ -39,3 +39,9 @@ Route::get('/travar_acumulado.php', [TabletApiController::class, 'travarAcumulad
 
 Route::get('/travar_bonus_bau.php', [TabletApiController::class, 'travarBonusBau'])
     ->name('api.legacy.travar-bonus-bau');
+
+Route::get('/pesquisaUltimasTransacoes.php', [TabletApiController::class, 'pesquisaUltimasTransacoes'])
+    ->name('api.pesquisa-ultimas-transacoes');
+
+Route::post('/add_crashlog.php', [TabletApiController::class, 'addCrashLog'])
+    ->name('api.add-crashlog');
